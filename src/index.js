@@ -50,21 +50,43 @@ class AxonTree {
   constructor(expr) {
     this.type = expr.type()
     this._expr = expr
-    expr.walk((key, value) => { this[key] = makeAxonNode(value) })
+    if (this.type == axon.ExprType.compdef()) {
+      expr.walk((key, value) => { this[key] = value })
+      this.body = makeAxonNode(this.body)
+
+      const cells = new Array()
+      cells.type = "array"
+      this.cells.each((value, key) => cells.push(new AxonCellDef(key, value)))
+      this.cells = cells
+    }
+    else {
+      expr.walk((key, value) => { this[key] = makeAxonNode(value) })
+    }
     if (this.type == axon.ExprType.dotCall()) {
       this.lhs = this.args.splice(0, 1)[0]
     }
-    else
-      if (this.type == axon.ExprType.trapCall()) {
-        this.lhs = this.args[0]
-        this.rhs = this.args[1]
-      }
+    else if (this.type == axon.ExprType.trapCall()) {
+      this.lhs = this.args[0]
+      this.rhs = this.args[1]
+    }
+    else if (this.type == axon.ExprType.partialCall()) {
+      this._expr.args().each((arg, i) => { if (arg === null) this.args[i].value = { toStr: function () { return "_" } } })
+    }
   }
 }
 
 class AxonLeaf {
   constructor(type, value) {
     this.type = type
+    this.value = value
+  }
+}
+
+
+class AxonCellDef {
+  constructor(key, value) {
+    this.type = axon.ExprType.celldef()
+    this.key = key
     this.value = value
   }
 }
@@ -170,13 +192,43 @@ function printAxon(path, options, print) {
     case axon.ExprType.var():
       return node.name.value
 
+    case axon.ExprType.func(): {
+      const needsParens = path.parent === null || node.params.length > 1
+      let docs = []
+      if (needsParens) docs.push("(")
+      docs = docs.concat([pb.join(", ", path.map(print, 'params'))])
+      docs.push(needsParens ? ") " : " ")
+      docs = docs.concat(["=> ", path.call(print, 'body')])
+      return pb.concat(docs)
+    }
+
     case axon.ExprType.compdef():
+      return pb.concat(["defcomp", pb.indent([pb.hardline, pb.join(pb.hardline, path.map(print, "cells")), pb.hardline, path.call(print, 'body')]), pb.hardline, "end"])
+
     case axon.ExprType.celldef():
-      return "paxon::compcell"
+      return node.value.toStr().replace("is:", "is:^")
 
     case axon.ExprType.call():
     case axon.ExprType.partialCall():
       return pb.concat([path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"])
+
+    case axon.ExprType.dotCall(): {
+      let docs = [path.call(print, "lhs"), ".", path.call(print, "func")]
+      const argDocs = path.map(print, 'args')
+      let trailingLamdba = null
+
+      if (node.args.length > 0 && node.args[node.args.length - 1].type == axon.ExprType.func() && path.parent.type != axon.ExprType.dotCall()) {
+        trailingLamdba = argDocs.splice(-1, 1).pop()
+      }
+      if (argDocs.length > 0) {
+        docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
+      }
+      if (trailingLamdba !== null) {
+        docs.push(" ")
+        docs.push(trailingLamdba)
+      }
+      return pb.concat(docs)
+    }
 
     case axon.ExprType.staticCall():
       return pb.concat([path.call(print, "typeRef"), ".", path.call(print, "funcName"), "(", pb.join(", ", path.map(print, 'args')), ")"])
@@ -237,34 +289,6 @@ function printAxon(path, options, print) {
 
     default:
       throw new Error("Unknown axon type: " + JSON.stringify(node));
-
-    case axon.ExprType.func(): {
-      const needsParens = node._expr.isTop() || node.params.length > 1
-      let docs = []
-      if (needsParens) docs.push("(")
-      docs = docs.concat([pb.join(", ", path.map(print, 'params'))])
-      docs.push(needsParens ? ") " : " ")
-      docs = docs.concat(["=> ", path.call(print, 'body')])
-      return pb.concat(docs)
-    }
-
-    case axon.ExprType.dotCall(): {
-      let docs = [path.call(print, "lhs"), ".", path.call(print, "func")]
-      const argDocs = path.map(print, 'args')
-      let trailingLamdba = null
-
-      if (node.args.length > 0 && node.args[node.args.length - 1].type == axon.ExprType.func() && path.parent.type != axon.ExprType.dotCall()) {
-        trailingLamdba = argDocs.splice(-1, 1).pop()
-      }
-      if (argDocs.length > 0) {
-        docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
-      }
-      if (trailingLamdba !== null) {
-        docs.push(" ")
-        docs.push(trailingLamdba)
-      }
-      return pb.concat(docs)
-    }
   }
 }
 
