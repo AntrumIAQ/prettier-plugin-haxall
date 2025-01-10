@@ -303,8 +303,7 @@ function printTrio(path, options, print) {
       docs.push(pb.hardline)
     }
     else if (n == "src") {
-      docs.push(path.call(print, "axon"))
-      docs.push(pb.hardline)
+      docs = docs.concat([pb.indent([pb.hardline, path.call(print, "axon")]), pb.hardline])
     }
     else {
       const indented = []
