@@ -24,7 +24,8 @@
     "typescript": "^5"
   },
   "scripts": {
-    "example": "prettier --plugin ./src/index.js --print-width 100 example.axon",
+    "axon": "prettier --plugin ./src/index.js --print-width 100 example.axon",
+    "trio": "prettier --plugin ./src/index.js --print-width 100 example.trio",
     "test": "jest"
   }
 }

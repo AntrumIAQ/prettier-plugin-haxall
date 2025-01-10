@@ -1,35 +1,12 @@
-import { builders } from "prettier/doc"
-
 import * as fan from './haxall/fan.js'
 import * as sys from './haxall/esm/sys.js'
 import * as axon from './haxall/esm/axon.js'
 import * as concurrent from './haxall/esm/concurrent.js'
 import * as haystack from './haxall/esm/haystack.js'
-
+import { builders } from "prettier/doc"
 const pb = builders;
 
 concurrent.Actor.locals().set(haystack.Etc.cxActorLocalsKey(), new axon.AxonContext());
-const languages = [
-  {
-    extensions: ['.trio'],
-    name: 'Trio',
-    parsers: ['trio-parse']
-  },
-  {
-    extensions: ['.axon'],
-    name: 'Axon',
-    parsers: ['axon-parse']
-  }
-]
-
-function parseTrio(text, options) {
-  console.log(axon.CoreLib.parseAst(text))
-  return {
-    type: "main",
-    start: 0,
-    end: text.length,
-  };
-}
 
 function makeAxonNode(obj) {
   if (sys.ObjUtil.is(obj, axon.Expr.type$)) {
@@ -82,7 +59,6 @@ class AxonLeaf {
   }
 }
 
-
 class AxonCellDef {
   constructor(key, value) {
     this.type = axon.ExprType.celldef()
@@ -100,37 +76,6 @@ function parseAxon(text, options) {
   let ast = new AxonTree(expr)
   return ast
 }
-
-const parsers = {
-  'trio-parse': {
-    parse: parseTrio,
-    astFormat: 'trio-ast'
-  },
-  'axon-parse': {
-    parse: parseAxon,
-    astFormat: 'axon-ast'
-  }
-}
-
-function printTrio(
-  // Path to the AST node to print
-  path,
-  options,
-  // Recursively print a child node
-  print
-) {
-  const node = path.getNode()
-
-  // if (Array.isArray(node)) {
-  //   return concat(path.map(print))
-  // }
-
-  switch (node.type) {
-    default:
-      return "poot"//JSON.stringify(poot)
-  }
-}
-
 
 function printAxon(path, options, print) {
   const node = path.getNode()
@@ -242,7 +187,7 @@ function printAxon(path, options, print) {
       ), pb.hardlineWithoutBreakParent, "end"])
 
     case axon.ExprType.ifExpr(): {
-      let docs = ["if (", path.call(print, 'cond'), ")", pb.line, path.call(print, 'ifExpr')]
+      let docs = ["if (", path.call(print, 'cond'), ") ", path.call(print, 'ifExpr')]
       if ("elseExpr" in node) {
         docs = docs.concat(pb.line, "else", pb.line, path.call(print, "elseExpr"))
       }
@@ -289,6 +234,115 @@ function printAxon(path, options, print) {
 
     default:
       throw new Error("Unknown axon type: " + JSON.stringify(node));
+  }
+}
+
+function parseTrio(text, options) {
+  const ast = { children: [] }
+  const reader = haystack.TrioReader.make(sys.Str.in(text))
+  reader.eachDict((value) => {
+    ast.children.push({
+      start: reader.recLineNum(),
+      srcStart: reader.srcLineNum(),
+      end: reader.__lineNum(),
+      dict: value,
+      axon: value.has("src") ? parseAxon(value.get("src"), options) : null
+    })
+  });
+  return ast
+}
+
+function printTrio(path, options, print) {
+  const node = path.getNode()
+  if ("children" in node) return pb.join(pb.concat(["---", pb.hardline]), path.map(print, "children"))
+  if ("type" in node) return printAxon(path, options, print)
+
+  let docs = []
+
+  const names = haystack.Etc.dictNames(node.dict)
+  names.sort()
+  names.moveTo("dis", 0)
+  names.moveTo("name", 0)
+  names.moveTo("id", 0)
+  names.moveTo("src", -1)
+  names.each((n) => {
+    let v = node.dict.get(n);
+    if (v == null) return;
+
+    docs.push(n)
+    if (v === haystack.Marker.val()) {
+      docs.push(pb.hardline)
+      return
+    }
+    docs.push(": ")
+    let kind = haystack.Kind.fromVal(v, false);
+    if (kind == null) {
+      docs.push(haystack.XStr.encode(v).toStr())
+      return
+    }
+
+    if (kind !== haystack.Kind.str()) {
+      if (kind.isCollection()) {
+        const trioWriterStr = sys.StrBuf.make()
+        const trioWriter = haystack.TrioWriter.make(trioWriterStr.out())
+        trioWriter.writeCollection(v)
+        docs.push(trioWriterStr.toStr())
+      }
+      else {
+        if (sys.ObjUtil.equals(kind, haystack.Kind.bool())) docs.push(String(v))
+        else docs.push(kind.valToZinc(v))
+        docs.push(pb.hardline)
+      }
+      return
+    }
+
+    let str = sys.ObjUtil.coerce(v, sys.Str.type$);
+    if (!sys.Str.contains(str, "\n")) {
+      if (haystack.TrioWriter.useQuotes(str)) docs.push(sys.Str.toCode(str))
+      else docs.push(str)
+      docs.push(pb.hardline)
+    }
+    else if (n == "src") {
+      docs.push(path.call(print, "axon"))
+      docs.push(pb.hardline)
+    }
+    else {
+      const indented = []
+      sys.Str.splitLines(str).each((line) => {
+        indented.push(line)
+        return;
+      })
+      docs.push(pb.indent([pb.hardline, pb.join(pb.hardline, indented)]))
+      docs.push(pb.hardline)
+    }
+    return
+  })
+  return pb.concat(docs)
+}
+//, haystack.Etc.makeDict1("noSort", "marker")
+
+
+const languages = [
+  {
+    extensions: ['.trio'],
+    name: 'Trio',
+    parsers: ['trio-parse']
+  },
+  {
+    extensions: ['.axon'],
+    name: 'Axon',
+    parsers: ['axon-parse']
+  }
+]
+
+const parsers = {
+  'trio-parse': {
+    parse: parseTrio,
+    astFormat: 'trio-ast'
+  },
+  'axon-parse': {
+    parse: parseAxon,
+    astFormat: 'axon-ast'
   }
 }
 
