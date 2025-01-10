@@ -71,9 +71,8 @@ class AxonCellDef {
   }
 }
 
-function parseAxon(text, options) {
-  //if (loc === undefined) loc = axon.Loc.eval();
-  let loc = axon.Loc.eval();
+function parseAxon(text, options, loc) {
+  if (loc === undefined) loc = axon.Loc.eval();
   let ins = sys.Str.in(text);
   let parser = axon.Parser.make(loc, ins);
   let expr = parser.parse();
@@ -273,7 +272,7 @@ function parseTrio(text, options) {
       srcStart: reader.srcLineNum(),
       end: reader.__lineNum(),
       dict: value,
-      axon: value.has("src") ? parseAxon(value.get("src"), options) : null
+      axon: value.has("src") ? parseAxon(value.get("src"), options, axon.Loc.make("unknown", reader.srcLineNum())) : null
     })
   });
   return ast
