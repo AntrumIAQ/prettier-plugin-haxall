@@ -78,6 +78,7 @@ function parseAxon(text, options) {
   let parser = axon.Parser.make(loc, ins);
   let expr = parser.parse();
   let ast = new AxonTree(expr)
+  ast.blankLinesBefore = 0
   return ast
 }
 
