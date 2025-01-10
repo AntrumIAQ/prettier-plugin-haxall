@@ -158,19 +158,25 @@ function printAxon(path, options, print) {
       return pb.concat([path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"])
 
     case axon.ExprType.dotCall(): {
-      let docs = [path.call(print, "lhs"), ".", path.call(print, "func")]
+      let docs = [path.call(print, "lhs")]
       const argDocs = path.map(print, 'args')
-      let trailingLamdba = null
 
+      let trailingLamdba = null
       if (node.args.length > 0 && node.args[node.args.length - 1].type == axon.ExprType.func() && path.parent.type != axon.ExprType.dotCall()) {
         trailingLamdba = argDocs.splice(-1, 1).pop()
       }
-      if (argDocs.length > 0) {
-        docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
+
+      if (node.func.name.value == "get" && argDocs.length == 1 && trailingLamdba === null) {
+        docs = docs.concat(["[", argDocs[0], "]"])
       }
-      if (trailingLamdba !== null) {
-        docs.push(" ")
-        docs.push(trailingLamdba)
+      else {
+        docs = docs.concat([".", path.call(print, "func")])
+        if (argDocs.length > 0) {
+          docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
+        }
+        if (trailingLamdba !== null) {
+          docs = docs.concat([" ", trailingLamdba])
+        }
       }
       return pb.concat(docs)
     }
@@ -318,8 +324,6 @@ function printTrio(path, options, print) {
   })
   return pb.concat(docs)
 }
-//, haystack.Etc.makeDict1("noSort", "marker")
-
 
 const languages = [
   {
