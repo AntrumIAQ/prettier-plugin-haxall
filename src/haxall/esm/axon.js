@@ -3274,23 +3274,16 @@ class Loc extends sys.Obj {
 
   __line(it) { if (it === undefined) return this.#line; else this.#line = it; }
 
-  #blankLinesBefore = 0;
-
-  blankLinesBefore() { return this.#blankLinesBefore; }
-
-  __blankLinesBefore(it) { if (it === undefined) return this.#blankLinesBefore; else this.#blankLinesBefore = it; }
-
-  static make(file,line,blankLinesBefore=0) {
+  static make(file,line) {
     const $self = new Loc();
-    Loc.make$($self,file,line,blankLinesBefore);
+    Loc.make$($self,file,line);
     return $self;
   }
 
-  static make$($self,file,line,blankLinesBefore=0) {
+  static make$($self,file,line) {
     if (line === undefined) line = 0;
     $self.#file = file;
     $self.#line = line;
-    $self.#blankLinesBefore = blankLinesBefore;
     return;
   }
 
@@ -9567,7 +9560,7 @@ class Parser extends sys.Obj {
 
   // private field reflection only
   __peekPeekLine(it) { if (it === undefined) return this.#peekPeekLine; else this.#peekPeekLine = it; }
-
+  
   #curName = null;
 
   // private field reflection only
@@ -9592,6 +9585,15 @@ class Parser extends sys.Obj {
 
   // private field reflection only
   __inSpec(it) { if (it === undefined) return this.#inSpec; else this.#inSpec = it; }
+
+  #blankLinesBefore = new Map();
+
+  // private field reflection only
+  __blankLinesBefore(it) { if (it === undefined) return this.#blankLinesBefore; else this.#blankLinesBefore = it; }
+
+  blankLinesBefore() {
+    return this.#blankLinesBefore;
+  }
 
   static make(startLoc,in$) {
     const $self = new Parser();
@@ -10516,7 +10518,7 @@ class Parser extends sys.Obj {
       this.verify(sys.ObjUtil.coerce(expected, Token.type$));
     }
     ;
-    this.#nl = this.#peekLine - this.#curLine;
+    this.#nl = sys.ObjUtil.compareNE(this.#curLine, this.#peekLine);
     this.#cur = this.#peek;
     this.#curVal = this.#peekVal;
     this.#curLine = this.#peekLine;
@@ -10527,6 +10529,10 @@ class Parser extends sys.Obj {
     this.#peekPeekVal = this.#tokenizer.val();
     this.#peekPeekLine = this.#tokenizer.line();
     if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) return this.consume(null)
+    let blankLines = this.#peekLine - this.#curLine - 1;
+    if ( blankLines > 0 ){
+      this.#blankLinesBefore.set(this.#curLine + this.#startLoc.line(),blankLines)
+    }
     return;
   }
 

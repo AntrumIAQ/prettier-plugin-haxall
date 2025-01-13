@@ -28,7 +28,6 @@ class AxonTree {
     this.type = expr.type()
     this._expr = expr
     this.start = expr.loc().line()
-    this.blankLinesBefore = expr.loc().blankLinesBefore()
     if (this.type == axon.ExprType.compdef()) {
       expr.walk((key, value) => { this[key] = value })
       this.body = makeAxonNode(this.body, this.start)
@@ -71,32 +70,24 @@ class AxonCellDef {
   }
 }
 
-function parseAxon(text, options, loc) {
+function parseAxon(text, options, options2, loc) {
   if (loc === undefined) loc = axon.Loc.eval();
   let ins = sys.Str.in(text);
   let parser = axon.Parser.make(loc, ins);
   let expr = parser.parse();
   let ast = new AxonTree(expr)
-  ast.blankLinesBefore = 0
+  if (options.blankLinesBefore === undefined) {
+    options.blankLinesBefore = new Map()
+    options.blankLinesPrinted = []
+  }
+  options.blankLinesBefore = new Map([...options.blankLinesBefore, ...parser.blankLinesBefore()])
   return ast
 }
 
 function printAxon(path, options, print) {
   const node = path.getNode()
 
-  let blankBefore = false
-  if (node.blankLinesBefore !== undefined && node.blankLinesBefore > 0) {
-    if (options.blankLineStarts === undefined) {
-      options.blankLineStarts = []
-    }
-
-    if (!options.blankLineStarts.includes(node.start)) {
-      blankBefore = true
-      options.blankLineStarts.push(node.start)
-    }
-  }
-
-  const docs = () => {
+  const makeDocs = () => {
     switch (node.type) {
 
       case "array":
@@ -112,44 +103,44 @@ function printAxon(path, options, print) {
 
       case axon.ExprType.list():
         return pb.group(
-          pb.concat([
+          [
             '[',
             pb.indent(
-              pb.concat([
+              [
                 pb.softline,
-                pb.join(pb.concat([',', pb.line]), path.map(print, 'vals'))
-              ])
+                pb.join([',', pb.line], path.map(print, 'vals'))
+              ]
             ),
             pb.softline,
             ']'
-          ])
+          ]
         )
 
       case axon.ExprType.dict():
         const keys = []
         node.names.forEach((name) => keys.push(haystack.Etc.isTagName(name.value) ? name.value : sys.Str.toCode(name.value)))
         const values = path.map(print, "vals")
-        const pairs = keys.map((k, i) => pb.concat([k, values[i] == "marker" ? "" : pb.concat([": ", values[i]])]));
+        const pairs = keys.map((k, i) => [k, values[i] == "marker" ? "" : [": ", values[i]]]);
         return pb.group(
-          pb.concat([
+          [
             '{',
             pb.indent([
               pb.softline,
-              pb.join(pb.concat([',', pb.line]), pairs)
+              pb.join([',', pb.line], pairs)
             ]),
             pb.softline,
             '}'
-          ])
+          ]
         )
 
       case axon.ExprType.range():
-        return pb.concat([path.call(print, 'start'), "..", path.call(print, 'end')])
+        return [path.call(print, 'start'), "..", path.call(print, 'end')]
 
       case axon.ExprType.filter():
-        return pb.concat(["parseFilter(", node.filter.toStr().toCode(), ")"])
+        return ["parseFilter(", node.filter.toStr().toCode(), ")"]
 
       case axon.ExprType.def():
-        return pb.concat([node.name.value, ": ", path.call(print, 'val')])
+        return [node.name.value, ": ", path.call(print, 'val')]
 
       case axon.ExprType.var():
         return node.name.value
@@ -161,18 +152,18 @@ function printAxon(path, options, print) {
         docs = docs.concat([pb.join(", ", path.map(print, 'params'))])
         docs.push(needsParens ? ") " : " ")
         docs = docs.concat(["=> ", path.call(print, 'body')])
-        return pb.concat(docs)
+        return docs
       }
 
       case axon.ExprType.compdef():
-        return pb.concat(["defcomp", pb.indent([pb.hardline, pb.join(pb.hardline, path.map(print, "cells")), pb.hardline, path.call(print, 'body')]), pb.hardline, "end"])
+        return ["defcomp", pb.indent([pb.hardline, pb.join(pb.hardline, path.map(print, "cells")), pb.hardline, path.call(print, 'body')]), pb.hardline, "end"]
 
       case axon.ExprType.celldef():
         return node.value.toStr().replace("is:", "is:^")
 
       case axon.ExprType.call():
       case axon.ExprType.partialCall():
-        return pb.concat([path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"])
+        return [path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"]
 
       case axon.ExprType.dotCall(): {
         let docs = [path.call(print, "lhs")]
@@ -195,33 +186,33 @@ function printAxon(path, options, print) {
             docs = docs.concat([" ", trailingLamdba])
           }
         }
-        return pb.concat(docs)
+        return docs
       }
 
       case axon.ExprType.staticCall():
-        return pb.concat([path.call(print, "typeRef"), ".", path.call(print, "funcName"), "(", pb.join(", ", path.map(print, 'args')), ")"])
+        return [path.call(print, "typeRef"), ".", path.call(print, "funcName"), "(", pb.join(", ", path.map(print, 'args')), ")"]
 
       case axon.ExprType.trapCall():
-        return pb.concat([path.call(print, "lhs"), "->", node.rhs.val.value])
+        return [path.call(print, "lhs"), "->", node.rhs.val.value]
 
       case axon.ExprType.block():
-        return pb.concat(["do", pb.indent(
-          pb.concat([pb.hardlineWithoutBreakParent, pb.join(pb.hardlineWithoutBreakParent, path.map(print, 'exprs'))])
-        ), pb.hardlineWithoutBreakParent, "end"])
+        return ["do", pb.indent(
+          [pb.hardlineWithoutBreakParent, pb.join(pb.hardlineWithoutBreakParent, path.map(print, 'exprs'))]
+        ), pb.hardlineWithoutBreakParent, "end"]
 
       case axon.ExprType.ifExpr(): {
         let docs = ["if (", path.call(print, 'cond'), ") ", path.call(print, 'ifExpr')]
         if ("elseExpr" in node) {
           docs = docs.concat(pb.line, "else", pb.line, path.call(print, "elseExpr"))
         }
-        return pb.group(pb.concat(docs))
+        return pb.group(docs)
       }
 
       case axon.ExprType.returnExpr():
-        return pb.concat(["return ", path.call(print, 'expr')])
+        return ["return ", path.call(print, 'expr')]
 
       case axon.ExprType.throwExpr():
-        return pb.concat(["throw ", path.call(print, 'expr')])
+        return ["throw ", path.call(print, 'expr')]
 
       case axon.ExprType.tryExpr(): {
         const docs = ["try", pb.indent([pb.line, path.call(print, 'tryExpr')]), pb.line, "catch"]
@@ -229,7 +220,7 @@ function printAxon(path, options, print) {
           docs.push("(" + node.errVarName.value + ")")
         }
         docs.push(pb.indent([pb.line, path.call(print, 'catchExpr')]))
-        return pb.group(pb.concat(docs))
+        return pb.group(docs)
       }
 
       case axon.ExprType.typeRef():
@@ -237,7 +228,7 @@ function printAxon(path, options, print) {
 
       case axon.ExprType.not("not"):
       case axon.ExprType.neg("-"):
-        return pb.concat([node.type.op(), " ", path.call(print, "operand")])
+        return [node.type.op(), " ", path.call(print, "operand")]
 
       case axon.ExprType.assign("="):
       case axon.ExprType.and("and"):
@@ -253,14 +244,20 @@ function printAxon(path, options, print) {
       case axon.ExprType.sub("-"):
       case axon.ExprType.mul("*"):
       case axon.ExprType.div("/"):
-        return pb.concat([path.call(print, "lhs"), " ", node.type.op(), " ", path.call(print, "rhs")])
+        return [path.call(print, "lhs"), " ", node.type.op(), " ", path.call(print, "rhs")]
 
       default:
         throw new Error("Unknown axon type: " + JSON.stringify(node));
     }
   }
-  if (blankBefore) return pb.concat([pb.hardline, docs()])
-  return docs()
+
+  let docs = makeDocs()
+  if (options.blankLinesBefore.has(node.start) && !options.blankLinesPrinted.includes(node.start)) {
+    options.blankLinesPrinted.push(node.start)
+    if (Array.isArray(docs)) docs.unshift(pb.lineSuffix("\n"))
+    else docs = [pb.lineSuffix("\n"), docs]
+  }
+  return docs
 }
 
 function parseTrio(text, options) {
@@ -272,7 +269,7 @@ function parseTrio(text, options) {
       srcStart: reader.srcLineNum(),
       end: reader.__lineNum(),
       dict: value,
-      axon: value.has("src") ? parseAxon(value.get("src"), options, axon.Loc.make("unknown", reader.srcLineNum())) : null
+      axon: value.has("src") ? parseAxon(value.get("src"), options, options, axon.Loc.make("unknown", reader.srcLineNum())) : null
     })
   });
   return ast
