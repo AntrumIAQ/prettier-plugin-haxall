@@ -86,7 +86,7 @@ function parseAxon(text, options, options2, loc) {
     options.blankLinesPrinted = []
   }
   options.blankLinesBefore = new Map([...options.blankLinesBefore, ...parser.blankLinesBefore()])
-  ast.comments = parser.comments()
+  //ast.comments = parser.comments()
   return ast
 }
 
