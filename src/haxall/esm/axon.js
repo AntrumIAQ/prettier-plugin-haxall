@@ -3274,16 +3274,26 @@ class Loc extends sys.Obj {
 
   __line(it) { if (it === undefined) return this.#line; else this.#line = it; }
 
-  static make(file,line) {
+  #filePos = 0;
+
+  filePos() { return this.#filePos; }
+
+  __filePos(it) { if (it === undefined) return this.#filePos; else this.#filePos = it; }
+
+  static make(file,line,filePos) {
     const $self = new Loc();
-    Loc.make$($self,file,line);
+    Loc.make$($self,file,line,filePos);
     return $self;
   }
 
-  static make$($self,file,line) {
+  static make$($self,file,line,filePos) {
     if (line === undefined) line = 0;
+    if (filePos === undefined){
+       filePos = 0;
+    }
     $self.#file = file;
     $self.#line = line;
+    $self.#filePos = filePos;
     return;
   }
 
@@ -8402,6 +8412,30 @@ class Tokenizer extends sys.Obj {
     }
   }
 
+  #valStartLoc = null;
+
+  valStartLoc(it) {
+    if (it === undefined) {
+      return this.#valStartLoc;
+    }
+    else {
+      this.#valStartLoc = it;
+      return;
+    }
+  }
+
+  #valEndLoc = null;
+
+  valEndLoc(it) {
+    if (it === undefined) {
+      return this.#valEndLoc;
+    }
+    else {
+      this.#valEndLoc = it;
+      return;
+    }
+  }
+
   #line = 0;
 
   line(it) {
@@ -8422,6 +8456,19 @@ class Tokenizer extends sys.Obj {
     }
     else {
       this.#col = it;
+      return;
+    }
+  }
+
+
+  #filePos = 0;
+
+  filePos(it) {
+    if (it === undefined) {
+      return this.#filePos;
+    }
+    else {
+      this.#filePos = it;
       return;
     }
   }
@@ -8482,49 +8529,55 @@ class Tokenizer extends sys.Obj {
       ;
       break;
     }
-    ;    
-    if (sys.ObjUtil.equals(this.#cur, 47)) {
-      if (sys.ObjUtil.equals(this.#peek, 47)) {
-        this.#tok = this.commentSL();
-        return this.#tok
+    ;
+    this.#valStartLoc = this.curLoc();
+    let nextTok = () => {
+      if (sys.ObjUtil.equals(this.#cur, 47)) {
+        if (sys.ObjUtil.equals(this.#peek, 47)) {
+          this.#tok = this.commentSL();
+          return this.#tok
+        }
+        ;
+        if (sys.ObjUtil.equals(this.#peek, 42)) {
+          this.#tok = this.commentML();
+          return this.#tok
+        }
+        ;
       }
       ;
-      if (sys.ObjUtil.equals(this.#peek, 42)) {
-        this.#tok = this.commentML();
-        return this.#tok
+      if ((sys.ObjUtil.equals(this.#cur, 114) && sys.ObjUtil.equals(this.#peek, 34))) {
+        return ((this$) => { let $_u125 = this$.rawStr(); this$.#tok = $_u125; return $_u125; })(this);
       }
       ;
+      if (sys.Int.isAlpha(this.#cur)) {
+        return ((this$) => { let $_u126 = this$.word(); this$.#tok = $_u126; return $_u126; })(this);
+      }
+      ;
+      if (sys.ObjUtil.equals(this.#cur, 34)) {
+        return ((this$) => { let $_u127 = this$.str(); this$.#tok = $_u127; return $_u127; })(this);
+      }
+      ;
+      if (sys.ObjUtil.equals(this.#cur, 64)) {
+        return ((this$) => { let $_u128 = this$.ref(); this$.#tok = $_u128; return $_u128; })(this);
+      }
+      ;
+      if (sys.Int.isDigit(this.#cur)) {
+        return ((this$) => { let $_u129 = this$.num(); this$.#tok = $_u129; return $_u129; })(this);
+      }
+      ;
+      if (sys.ObjUtil.equals(this.#cur, 94)) {
+        return ((this$) => { let $_u130 = this$.symbol(); this$.#tok = $_u130; return $_u130; })(this);
+      }
+      ;
+      if (sys.ObjUtil.equals(this.#cur, 96)) {
+        return ((this$) => { let $_u131 = this$.uri(); this$.#tok = $_u131; return $_u131; })(this);
+      }
+      ;
+      return ((this$) => { let $_u132 = this$.operator(); this$.#tok = $_u132; return $_u132; })(this);
     }
-    ;
-    if ((sys.ObjUtil.equals(this.#cur, 114) && sys.ObjUtil.equals(this.#peek, 34))) {
-      return ((this$) => { let $_u125 = this$.rawStr(); this$.#tok = $_u125; return $_u125; })(this);
-    }
-    ;
-    if (sys.Int.isAlpha(this.#cur)) {
-      return ((this$) => { let $_u126 = this$.word(); this$.#tok = $_u126; return $_u126; })(this);
-    }
-    ;
-    if (sys.ObjUtil.equals(this.#cur, 34)) {
-      return ((this$) => { let $_u127 = this$.str(); this$.#tok = $_u127; return $_u127; })(this);
-    }
-    ;
-    if (sys.ObjUtil.equals(this.#cur, 64)) {
-      return ((this$) => { let $_u128 = this$.ref(); this$.#tok = $_u128; return $_u128; })(this);
-    }
-    ;
-    if (sys.Int.isDigit(this.#cur)) {
-      return ((this$) => { let $_u129 = this$.num(); this$.#tok = $_u129; return $_u129; })(this);
-    }
-    ;
-    if (sys.ObjUtil.equals(this.#cur, 94)) {
-      return ((this$) => { let $_u130 = this$.symbol(); this$.#tok = $_u130; return $_u130; })(this);
-    }
-    ;
-    if (sys.ObjUtil.equals(this.#cur, 96)) {
-      return ((this$) => { let $_u131 = this$.uri(); this$.#tok = $_u131; return $_u131; })(this);
-    }
-    ;
-    return ((this$) => { let $_u132 = this$.operator(); this$.#tok = $_u132; return $_u132; })(this);
+    let tok = nextTok()
+    this.#valEndLoc = this.curLoc();
+    return tok
   }
 
   word() {
@@ -9182,7 +9235,7 @@ class Tokenizer extends sys.Obj {
       s.addChar(ch);
     }
     ;
-    this.#val = sys.Uri.fromStr(s.toStr());
+    this.#val = s.toStr();
     return Token.commentSL();
   }
 
@@ -9192,18 +9245,22 @@ class Tokenizer extends sys.Obj {
     let s = sys.StrBuf.make();
     let depth = 1;
     while (true) {
-      let ch = this.#cur;
       if ((sys.ObjUtil.equals(this.#cur, 42) && sys.ObjUtil.equals(this.#peek, 47))) {
         this.consume();
         this.consume();
         ((this$) => { let $_u138 = depth;depth = sys.Int.decrement(depth); return $_u138; })(this);
         if (sys.ObjUtil.compareLE(depth, 0)) {
           break;
+        } else {
+          s.addChar(42);
+          s.addChar(47);
         }
         ;
       }
       ;
       if ((sys.ObjUtil.equals(this.#cur, 47) && sys.ObjUtil.equals(this.#peek, 42))) {
+        s.addChar(this.#cur);
+        s.addChar(this.#peek);
         this.consume();
         this.consume();
         ((this$) => { let $_u139 = depth;depth = sys.Int.increment(depth); return $_u139; })(this);
@@ -9218,11 +9275,11 @@ class Tokenizer extends sys.Obj {
         break;
       }
       ;
+      s.addChar(this.#cur);
       this.consume();
-      s.addChar(ch);
     }
     ;
-    this.#val = sys.Uri.fromStr(s.toStr());
+    this.#val = s.toStr();
     return Token.commentML();
   }
 
@@ -9231,7 +9288,7 @@ class Tokenizer extends sys.Obj {
   }
 
   curLoc() {
-    return Loc.make(this.#startLoc.file(), sys.Int.plus(this.#startLoc.line(), this.#line));
+    return Loc.make(this.#startLoc.file(), sys.Int.plus(this.#startLoc.line(), this.#line),sys.Int.plus(this.#startLoc.filePos(), this.#filePos));
   }
 
   consume() {
@@ -9243,7 +9300,7 @@ class Tokenizer extends sys.Obj {
     }
     ;
     this.#cur = this.#peek;
-    this.#peek = sys.ObjUtil.coerce(((this$) => { let $_u141 = this$.#in.readChar(); if ($_u141 != null) return $_u141; return sys.ObjUtil.coerce(0, sys.Int.type$.toNullable()); })(this), sys.Int.type$);
+    this.#peek = sys.ObjUtil.coerce(((this$) => { let $_u141 = this$.#in.readChar(); if ($_u141 != null){ this.#filePos++; return $_u141 }; return sys.ObjUtil.coerce(0, sys.Int.type$.toNullable()); })(this), sys.Int.type$);
     return;
   }
 
@@ -9461,6 +9518,15 @@ class NotFilterErr extends sys.Err {
 
 }
 
+class Comment extends sys.Obj {
+  constructor(value, start, end) {
+    super();
+    this.value = value
+    this.start = start
+    this.end = end
+  }  
+}
+
 class Parser extends sys.Obj {
   constructor() {
     super();
@@ -9514,6 +9580,18 @@ class Parser extends sys.Obj {
     return this.#curVal;
   }
 
+  #curValStart = null;
+
+  curValStart() {
+    return this.#curValStart;
+  }
+
+  #curValEnd = null;
+
+  curValEnd() {
+    return this.#curValEnd;
+  }
+
   #curIndent = 0;
 
   // private field reflection only
@@ -9541,6 +9619,18 @@ class Parser extends sys.Obj {
     return this.#peekVal;
   }
 
+  #peekValStart = null;
+
+  peekValStart() {
+    return this.#peekValStart;
+  }
+
+  #peekValEnd = null;
+
+  peekValEnd() {
+    return this.#peekValEnd;
+  }
+
   #peekLine = 0;
 
   // private field reflection only
@@ -9555,6 +9645,16 @@ class Parser extends sys.Obj {
 
   // private field reflection only
   __peekPeekVal(it) { if (it === undefined) return this.#peekPeekVal; else this.#peekPeekVal = it; }
+
+  #peekPeekValStart = null;
+
+  // private field reflection only
+  __peekPeekValStart(it) { if (it === undefined) return this.#peekPeekValStart; else this.#peekPeekValStart = it; }
+
+  #peekPeekValEnd = null;
+
+  // private field reflection only
+  __peekPeekValEnd(it) { if (it === undefined) return this.#peekPeekValEnd; else this.#peekPeekValEnd = it; }
 
   #peekPeekLine = 0;
 
@@ -9593,6 +9693,15 @@ class Parser extends sys.Obj {
 
   blankLinesBefore() {
     return this.#blankLinesBefore;
+  }
+
+  #comments = [];
+
+  // private field reflection only
+  __comments(it) { if (it === undefined) return this.#comments; else this.#comments = it; }
+
+  comments() {
+    return this.#comments;
   }
 
   static make(startLoc,in$) {
@@ -10521,14 +10630,23 @@ class Parser extends sys.Obj {
     this.#nl = sys.ObjUtil.compareNE(this.#curLine, this.#peekLine);
     this.#cur = this.#peek;
     this.#curVal = this.#peekVal;
+    this.#curValStart = this.#peekValStart;
+    this.#curValEnd = this.#peekValEnd;
     this.#curLine = this.#peekLine;
     this.#peek = this.#peekPeek;
     this.#peekVal = this.#peekPeekVal;
+    this.#peekValStart = this.#peekPeekValStart;
+    this.#peekValEnd = this.#peekPeekValEnd;
     this.#peekLine = this.#peekPeekLine;
     this.#peekPeek = this.#tokenizer.next();
     this.#peekPeekVal = this.#tokenizer.val();
+    this.#peekPeekValStart = this.#tokenizer.valStartLoc();
+    this.#peekPeekValEnd = this.#tokenizer.valEndLoc();
     this.#peekPeekLine = this.#tokenizer.line();
-    if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) return this.consume(null)
+    if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) {
+      this.#comments.push( new Comment( this.#curVal, this.#curValStart, this.#curValEnd ) )
+      return this.consume(null)
+    }
     let blankLines = this.#peekLine - this.#curLine - 1;
     if ( blankLines > 0 ){
       this.#blankLinesBefore.set(this.#curLine + this.#startLoc.line(),blankLines)

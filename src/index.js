@@ -71,7 +71,7 @@ class AxonCellDef {
 }
 
 function parseAxon(text, options, options2, loc) {
-  if (loc === undefined) loc = axon.Loc.eval();
+  if (loc === undefined) loc = axon.Loc.make(options.filepath, 0, 0)
   let ins = sys.Str.in(text);
   let parser = axon.Parser.make(loc, ins);
   let expr = parser.parse();
@@ -81,6 +81,7 @@ function parseAxon(text, options, options2, loc) {
     options.blankLinesPrinted = []
   }
   options.blankLinesBefore = new Map([...options.blankLinesBefore, ...parser.blankLinesBefore()])
+  const comments = parser.comments()
   return ast
 }
 
@@ -146,7 +147,7 @@ function printAxon(path, options, print) {
         return node.name.value
 
       case axon.ExprType.func(): {
-        const needsParens = path.parent === null || node.params.length > 1
+        const needsParens = path.parent === null || path.parent.dict !== undefined || node.params.length > 1
         let docs = []
         if (needsParens) docs.push("(")
         docs = docs.concat([pb.join(", ", path.map(print, 'params'))])
@@ -165,30 +166,6 @@ function printAxon(path, options, print) {
       case axon.ExprType.partialCall():
         return [path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"]
 
-      case axon.ExprType.dotCall(): {
-        let docs = [path.call(print, "lhs")]
-        const argDocs = path.map(print, 'args')
-
-        let trailingLamdba = null
-        if (node.args.length > 0 && node.args[node.args.length - 1].type == axon.ExprType.func() && path.parent.type != axon.ExprType.dotCall()) {
-          trailingLamdba = argDocs.splice(-1, 1).pop()
-        }
-
-        if (node.func.name.value == "get" && argDocs.length == 1 && trailingLamdba === null) {
-          docs = docs.concat(["[", argDocs[0], "]"])
-        }
-        else {
-          docs = docs.concat([".", path.call(print, "func")])
-          if (argDocs.length > 0) {
-            docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
-          }
-          if (trailingLamdba !== null) {
-            docs = docs.concat([" ", trailingLamdba])
-          }
-        }
-        return docs
-      }
-
       case axon.ExprType.staticCall():
         return [path.call(print, "typeRef"), ".", path.call(print, "funcName"), "(", pb.join(", ", path.map(print, 'args')), ")"]
 
@@ -201,9 +178,9 @@ function printAxon(path, options, print) {
         ), pb.hardlineWithoutBreakParent, "end"]
 
       case axon.ExprType.ifExpr(): {
-        let docs = ["if (", path.call(print, 'cond'), ") ", path.call(print, 'ifExpr')]
+        let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " ", path.call(print, 'ifExpr')]
         if ("elseExpr" in node) {
-          docs = docs.concat(pb.line, "else", pb.line, path.call(print, "elseExpr"))
+          docs = docs.concat(pb.line, "else ", path.call(print, "elseExpr"))
         }
         return pb.group(docs)
       }
@@ -230,9 +207,11 @@ function printAxon(path, options, print) {
       case axon.ExprType.neg("-"):
         return [node.type.op(), " ", path.call(print, "operand")]
 
-      case axon.ExprType.assign("="):
       case axon.ExprType.and("and"):
       case axon.ExprType.or("or"):
+        return pb.group([path.call(print, "lhs"), pb.line, node.type.op(), " ", path.call(print, "rhs")])
+
+      case axon.ExprType.assign("="):
       case axon.ExprType.eq("=="):
       case axon.ExprType.ne("!="):
       case axon.ExprType.lt("<"):
@@ -248,15 +227,44 @@ function printAxon(path, options, print) {
 
       default:
         throw new Error("Unknown axon type: " + JSON.stringify(node));
+
+      case axon.ExprType.dotCall(): {
+        let isDotCallLeaf = path.parent.type != axon.ExprType.dotCall()
+        if (isDotCallLeaf) options.dotCallLeafGroupId = node.start
+        let docs = [path.call(print, "lhs")]
+        const argDocs = path.map(print, 'args')
+
+        let trailingLamdba = null
+        if (node.args.length > 0 && node.args[node.args.length - 1].type == axon.ExprType.func() && isDotCallLeaf) {
+          trailingLamdba = argDocs.splice(-1, 1).pop()
+        }
+
+        if (node.func.name.value == "get" && argDocs.length == 1 && trailingLamdba === null) {
+          docs = docs.concat(["[", argDocs[0], "]"])
+        }
+        else {
+          let dotBreak = isDotCallLeaf ? pb.softline : pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: options.dotCallLeafGroupId })
+          docs = docs.concat([dotBreak, ".", path.call(print, "func")])
+          if (argDocs.length > 0) {
+            docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
+          }
+          if (trailingLamdba !== null) {
+            docs = docs.concat([" ", trailingLamdba])
+          }
+        }
+        if (isDotCallLeaf) docs = pb.indent(docs)
+        docs = pb.group(docs, { id: isDotCallLeaf ? node.start : null })
+        return docs
+      }
     }
   }
 
   let docs = makeDocs()
-  if (options.blankLinesBefore.has(node.start) && !options.blankLinesPrinted.includes(node.start)) {
-    options.blankLinesPrinted.push(node.start)
-    if (Array.isArray(docs)) docs.unshift(pb.lineSuffix("\n"))
-    else docs = [pb.lineSuffix("\n"), docs]
-  }
+  // if (options.blankLinesBefore.has(node.start) && !options.blankLinesPrinted.includes(node.start)) {
+  //   options.blankLinesPrinted.push(node.start)
+  //   if (Array.isArray(docs)) docs.unshift(pb.lineSuffix("\n"))
+  //   else docs = [pb.lineSuffix("\n"), docs]
+  // }
   return docs
 }
 
@@ -320,13 +328,13 @@ function printTrio(path, options, print) {
     }
 
     let str = sys.ObjUtil.coerce(v, sys.Str.type$);
-    if (!sys.Str.contains(str, "\n")) {
+    if (n == "src") {
+      docs = docs.concat([pb.indent([pb.hardline, path.call(print, "axon")]), pb.hardline])
+    }
+    else if (!sys.Str.contains(str, "\n")) {
       if (haystack.TrioWriter.useQuotes(str)) docs.push(sys.Str.toCode(str))
       else docs.push(str)
       docs.push(pb.hardline)
-    }
-    else if (n == "src") {
-      docs = docs.concat([pb.indent([pb.hardline, path.call(print, "axon")]), pb.hardline])
     }
     else {
       const indented = []
