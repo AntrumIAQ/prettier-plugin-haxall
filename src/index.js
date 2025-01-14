@@ -86,7 +86,7 @@ function parseAxon(text, options, options2, loc) {
     options.blankLinesPrinted = []
   }
   options.blankLinesBefore = new Map([...options.blankLinesBefore, ...parser.blankLinesBefore()])
-  //ast.comments = parser.comments()
+  ast.comments = parser.comments()
   return ast
 }
 
@@ -398,16 +398,22 @@ const ignoredKeys = new Set(["_expr", "type", "start", "end"]);
 const printers = {
   'trio-ast': {
     print: printTrio,
-    printComment: (comment, options) => {
-      return comment.value
-    }
+    printComment: (path, options) => comment.node.value
   },
   'axon-ast': {
     print: printAxon,
-    printComment: (comment, options) => {
-      return comment.value
+    printComment: (path, options) => {
+      if (path.node.type == "commentSL") return ["// ", path.node.value]
+      if (path.node.type == "commentML") {
+        if (path.node.value.includes("\n")) {
+          const lines = path.node.value.split('\n').map((line) => line.trim())
+          return ["/*", pb.indent(pb.join(pb.hardline, lines)), pb.hardline, "*/"]
+        }
+        else return ["/*", path.node.value, "*/"]
+      }
     },
-    canAttachComment: (node) => "start" in node,
+    isBlockComment: (node) => node.type == "commentML",
+    canAttachComment: (node) => "start" in node && node.start !== null,
     getVisitorKeys: (node, nonTraversableKeys) => {
       return Object.keys(node).filter(
         (key) => !nonTraversableKeys.has(key) && !ignoredKeys.has(key),

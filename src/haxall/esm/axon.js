@@ -9567,11 +9567,12 @@ class NotFilterErr extends sys.Err {
 }
 
 class Comment extends sys.Obj {
-  constructor(value, start, end) {
+  constructor(value, start, end, type) {
     super();
     this.value = value
     this.start = start
     this.end = end
+    this.type = type
   }  
 }
 
@@ -10724,7 +10725,7 @@ class Parser extends sys.Obj {
     if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) {
       const end = this.#curValEnd
       end.filePos(end.filePos() -1 )
-      this.#comments.push( new Comment( this.#curVal, this.#curValStart, end ) )
+      this.#comments.push( new Comment( this.#curVal, this.#curValStart, end, this.#cur.name() ) )
       return this.consume(null)
     }
     let blankLines = this.#peekLine - this.#curLine - 1;
