@@ -8,18 +8,18 @@ const pb = builders;
 
 concurrent.Actor.locals().set(haystack.Etc.cxActorLocalsKey(), new axon.AxonContext());
 
-function makeAxonNode(obj, start) {
+function makeAxonNode(obj) {
   if (sys.ObjUtil.is(obj, axon.Expr.type$)) {
     return new AxonTree(obj)
   }
   else if (sys.ObjUtil.is(obj, sys.Type.find("sys::List"))) {
     const values = new Array()
-    obj.each((value) => values.push(makeAxonNode(value, start)))
+    obj.each((value) => values.push(makeAxonNode(value)))
     values.type = "array"
     return values
   }
   else {
-    return new AxonLeaf("literal", obj, start)
+    return new AxonLeaf("literal", obj)
   }
 }
 
@@ -27,18 +27,19 @@ class AxonTree {
   constructor(expr) {
     this.type = expr.type()
     this._expr = expr
-    this.start = expr.loc().line()
+    this.start = expr.startLoc()
+    this.end = expr.endLoc()
     if (this.type == axon.ExprType.compdef()) {
       expr.walk((key, value) => { this[key] = value })
-      this.body = makeAxonNode(this.body, this.start)
+      this.body = makeAxonNode(this.body)
 
       const cells = new Array()
       cells.type = "array"
-      this.cells.each((value, key) => cells.push(new AxonCellDef(key, value, this.start)))
+      this.cells.each((value, key) => cells.push(new AxonCellDef(key, value)))
       this.cells = cells
     }
     else {
-      expr.walk((key, value) => { this[key] = makeAxonNode(value, this.start) })
+      expr.walk((key, value) => { this[key] = makeAxonNode(value) })
     }
     if (this.type == axon.ExprType.dotCall()) {
       this.lhs = this.args.splice(0, 1)[0]
@@ -54,10 +55,13 @@ class AxonTree {
 }
 
 class AxonLeaf {
-  constructor(type, value, start) {
+  constructor(type, value) {
     this.type = type
     this.value = value
-    this.start = start
+    if (value !== null && value.startLoc !== undefined) {
+      this.start = value.startLoc()
+      this.end = value.endLoc()
+    }
   }
 }
 
@@ -66,7 +70,8 @@ class AxonCellDef {
     this.type = axon.ExprType.celldef()
     this.key = key
     this.value = value
-    this.start = start
+    this.start = start.startLoc()
+    this.end = end.endLoc()
   }
 }
 
@@ -81,7 +86,7 @@ function parseAxon(text, options, options2, loc) {
     options.blankLinesPrinted = []
   }
   options.blankLinesBefore = new Map([...options.blankLinesBefore, ...parser.blankLinesBefore()])
-  const comments = parser.comments()
+  ast.comments = parser.comments()
   return ast
 }
 
@@ -230,7 +235,7 @@ function printAxon(path, options, print) {
 
       case axon.ExprType.dotCall(): {
         let isDotCallLeaf = path.parent.type != axon.ExprType.dotCall()
-        if (isDotCallLeaf) options.dotCallLeafGroupId = node.start
+        if (isDotCallLeaf) options.dotCallLeafGroupId = node.start.filePos
         let docs = [path.call(print, "lhs")]
         const argDocs = path.map(print, 'args')
 
@@ -253,7 +258,7 @@ function printAxon(path, options, print) {
           }
         }
         if (isDotCallLeaf) docs = pb.indent(docs)
-        docs = pb.group(docs, { id: isDotCallLeaf ? node.start : null })
+        docs = pb.group(docs, { id: isDotCallLeaf ? node.start.filePos : null })
         return docs
       }
     }
@@ -370,17 +375,44 @@ const parsers = {
   },
   'axon-parse': {
     parse: parseAxon,
-    locStart: (node) => node.start,
+    locStart: (node) => {
+      if (node.start === undefined) {
+        return 0
+      }
+      if (node.start === null) {
+        return 0
+      }
+      return node.start.filePos()
+    },
+    locEnd: (node) => {
+      if (node.end === undefined) {
+        return 0
+      }
+      return node.end.filePos()
+    },
     astFormat: 'axon-ast'
   }
 }
+const ignoredKeys = new Set(["_expr", "type", "start", "end"]);
 
 const printers = {
   'trio-ast': {
-    print: printTrio
+    print: printTrio,
+    printComment: (comment, options) => {
+      return comment.value
+    }
   },
   'axon-ast': {
-    print: printAxon
+    print: printAxon,
+    printComment: (comment, options) => {
+      return comment.value
+    },
+    canAttachComment: (node) => "start" in node,
+    getVisitorKeys: (node, nonTraversableKeys) => {
+      return Object.keys(node).filter(
+        (key) => !nonTraversableKeys.has(key) && !ignoredKeys.has(key),
+      );
+    }
   }
 }
 

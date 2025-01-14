@@ -839,6 +839,30 @@ class Expr extends sys.Obj {
     const this$ = this;
   }
 
+  #startLoc = null;
+
+  startLoc(it) {
+    if (it === undefined) {
+      return this.#startLoc;
+    }
+    else {
+      this.#startLoc = it;
+      return;
+    }
+  }
+
+  #endLoc = null;
+
+  endLoc(it) {
+    if (it === undefined) {
+      return this.#endLoc;
+    }
+    else {
+      this.#endLoc = it;
+      return;
+    }
+  }
+
   typeof() { return Expr.type$; }
 
   encode() {
@@ -1781,6 +1805,30 @@ class FnParam extends sys.Obj {
   hasDef() { return this.#hasDef; }
 
   __hasDef(it) { if (it === undefined) return this.#hasDef; else this.#hasDef = it; }
+  
+  #startLoc = null;
+
+  startLoc(it) {
+    if (it === undefined) {
+      return this.#startLoc;
+    }
+    else {
+      this.#startLoc = it;
+      return;
+    }
+  }
+
+  #endLoc = null;
+
+  endLoc(it) {
+    if (it === undefined) {
+      return this.#endLoc;
+    }
+    else {
+      this.#endLoc = it;
+      return;
+    }
+  }
 
   static makeNum(num) {
     return FnParam.byNum().get(num);
@@ -1982,6 +2030,8 @@ class BinaryOp extends Expr {
     Expr.make$($self);
     $self.#lhs = lhs;
     $self.#rhs = rhs;
+    $self.startLoc(lhs.startLoc())
+    $self.endLoc(lhs.endLoc())
     return;
   }
 
@@ -3276,9 +3326,7 @@ class Loc extends sys.Obj {
 
   #filePos = 0;
 
-  filePos() { return this.#filePos; }
-
-  __filePos(it) { if (it === undefined) return this.#filePos; else this.#filePos = it; }
+  filePos(it) { if (it === undefined) return this.#filePos; else this.#filePos = it; }
 
   static make(file,line,filePos) {
     const $self = new Loc();
@@ -8577,6 +8625,7 @@ class Tokenizer extends sys.Obj {
     }
     let tok = nextTok()
     this.#valEndLoc = this.curLoc();
+    this.#valEndLoc.filePos(this.#valEndLoc.filePos() -1)
     return tok
   }
 
@@ -9226,13 +9275,12 @@ class Tokenizer extends sys.Obj {
     this.consume();
     let s = sys.StrBuf.make();
     while (true) {
-      let ch = this.#cur;
       if ((sys.ObjUtil.equals(this.#cur, 10) || sys.ObjUtil.equals(this.#cur, 0))) {
         break;
       }
       ;
+      s.addChar(this.#cur);
       this.consume();
-      s.addChar(ch);
     }
     ;
     this.#val = s.toStr();
@@ -9721,6 +9769,13 @@ class Parser extends sys.Obj {
     return;
   }
 
+  setStartEnd( expr, start, end ){
+    expr.startLoc(start)
+    if ( end === undefined ) end = this.#curValEnd
+    expr.endLoc(end)
+    return expr
+  }
+
   parse() {
     let r = ((this$) => { if (this$.#cur === Token.defcompKeyword()) return this$.defcomp("top", haystack.Etc.emptyDict()); return this$.expr(); })(this);
     if (this.#cur !== Token.eof()) {
@@ -9739,6 +9794,7 @@ class Parser extends sys.Obj {
       (fn = this.defcomp(name, meta));
     }
     else {
+      let exprStart = this.#curValStart
       if (this.#cur !== Token.lparen()) {
         throw this.err("Expecting '(...) =>' top-level function");
       }
@@ -9750,6 +9806,7 @@ class Parser extends sys.Obj {
       }
       ;
       (fn = this.lamdbaBody(loc, params, meta));
+      this.setStartEnd(fn, exprStart)
     }
     ;
     if (this.#cur !== Token.eof()) {
@@ -9810,6 +9867,7 @@ class Parser extends sys.Obj {
   }
 
   doBlock() {
+    let exprStart = this.#curValStart
     this.consume(Token.doKeyword());
     let exprs = sys.List.make(Expr.type$, [this.expr()]);
     while (true) {
@@ -9851,7 +9909,7 @@ class Parser extends sys.Obj {
       exprs.add(this.expr());
     }
     ;
-    return Block.make(exprs);
+    return this.setStartEnd(Block.make(exprs), exprStart);
   }
 
   isEos() {
@@ -9872,6 +9930,7 @@ class Parser extends sys.Obj {
   }
 
   defcomp(name,meta) {
+    let exprStart = this.#curValStart
     let compLoc = this.curLoc();
     this.consume(Token.defcompKeyword());
     let compRef = concurrent.AtomicRef.make();
@@ -9897,10 +9956,11 @@ class Parser extends sys.Obj {
     let def = MCompDef.make(compLoc, name, meta, body, cells, cellsMap);
     compRef.val(def);
     this.bindInnersToOuter(def);
-    return def;
+    return this.setStartEnd(def, exprStart);
   }
 
   cell(compRef,index) {
+    let exprStart = this.#curValStart
     let name = this.consumeIdOrKeyword("Expecting cell name");
     this.consume(Token.colon());
     let meta = this.constDict();
@@ -9909,17 +9969,20 @@ class Parser extends sys.Obj {
     }
     ;
     this.eos();
-    return MCellDef.make(compRef, index, name, meta);
+    return this.setStartEnd(MCellDef.make(compRef, index, name, meta), exprStart);
   }
 
   def() {
+    let exprStart = this.#curValStart
     let loc = this.curLoc();
     let name = this.consumeId("variable name");
     this.consume(Token.colon());
-    return DefineVar.make(loc, name, this.namedExpr(name));
+    let valStart = this.#curValStart
+    return this.setStartEnd(DefineVar.make(loc, name, this.setStartEnd(this.namedExpr(name),valStart)), exprStart);
   }
 
   ifExpr() {
+    let exprStart = this.#curValStart
     let loc = this.curLoc();
     this.consume();
     this.consume(Token.lparen());
@@ -9932,28 +9995,31 @@ class Parser extends sys.Obj {
       (falseVal = this.expr());
     }
     ;
-    return If.make(cond, trueVal, falseVal);
+    return this.setStartEnd(If.make(cond, trueVal, falseVal), exprStart);
   }
 
   returnExpr() {
+    let exprStart = this.#curValStart
     this.consume(Token.returnKeyword());
     if (this.#nl) {
       throw this.err("return must be followed by expr on same line");
     }
     ;
-    return Return.make(this.expr());
+    return this.setStartEnd(Return.make(this.expr()), exprStart);
   }
 
   throwExpr() {
+    let exprStart = this.#curValStart
     this.consume(Token.throwKeyword());
     if (this.#nl) {
       throw this.err("throw must be followed by expr on same line");
     }
     ;
-    return Throw.make(this.expr());
+    return this.setStartEnd(Throw.make(this.expr()), exprStart);
   }
 
   tryCatchExpr() {
+    let exprStart = this.#curValStart
     this.consume(Token.tryKeyword());
     let body = this.expr();
     this.consume(Token.catchKeyword());
@@ -9965,14 +10031,15 @@ class Parser extends sys.Obj {
     }
     ;
     let catcher = this.expr();
-    return TryCatch.make(body, errVarName, catcher);
+    return this.setStartEnd(TryCatch.make(body, errVarName, catcher), exprStart);
   }
 
   list() {
+    let exprStart = this.#curValStart
     this.consume(Token.lbracket());
     if (this.#cur === Token.rbracket()) {
       this.consume();
-      return ListExpr.empty();
+      return this.setStartEnd(ListExpr.empty(), exprStart)
     }
     ;
     let acc = sys.List.make(Expr.type$);
@@ -9996,16 +10063,17 @@ class Parser extends sys.Obj {
     }
     ;
     this.consume(Token.rbracket());
-    return ListExpr.make(acc, allValsConst);
+    return this.setStartEnd(ListExpr.make(acc, allValsConst), exprStart);
   }
 
   dict() {
+    let exprStart = this.#curValStart
     let open = Token.lbrace();
     let close = Token.rbrace();
     this.consume(open);
     if (this.#cur === close) {
       this.consume();
-      return DictExpr.empty();
+      return this.setStartEnd(DictExpr.empty(), exprStart)
     }
     ;
     let loc = this.curLoc();
@@ -10059,7 +10127,7 @@ class Parser extends sys.Obj {
     }
     ;
     this.consume(close);
-    return DictExpr.make(loc, names, vals, allValsConst);
+    return this.setStartEnd(DictExpr.make(loc, names, vals, allValsConst), exprStart)
   }
 
   constDict() {
@@ -10193,47 +10261,55 @@ class Parser extends sys.Obj {
   }
 
   unaryExpr() {
+    let startExpr = this.#curValStart
     if (this.#cur === Token.minus()) {
       this.consume();
-      return Neg.make(this.termExpr()).foldConst();
+      return this.setStartEnd(Neg.make(this.termExpr()).foldConst(),startExpr,this.#curValEnd);
     }
     ;
     if (this.#cur === Token.notKeyword()) {
       this.consume();
-      return Not.make(this.termExpr()).foldConst();
+      return this.setStartEnd(Not.make(this.termExpr()).foldConst(),startExpr,this.#curValEnd);
     }
     ;
-    return this.termExpr();
+    return this.setStartEnd(this.termExpr(),startExpr,this.#curValEnd);
   }
 
   termExpr(start) {
+    let startTermBase = this.#curValStart
     if (start === undefined) start = null;
     let expr = ((this$) => { let $_u149 = start; if ($_u149 != null) return $_u149; return this$.termBase(); })(this);
+    this.setStartEnd(expr,startTermBase,this.#curValEnd)
     while (true) {
+      let startExpr = this.#curValStart
       if ((this.#cur === Token.lparen() && !this.#nl)) {
         (expr = this.call(sys.ObjUtil.coerce(expr, Expr.type$), false));
+        this.setStartEnd(expr,startExpr,this.#curValEnd)
         continue;
       }
       ;
       if ((this.#cur === Token.lbracket() && !this.#nl)) {
         (expr = this.index(sys.ObjUtil.coerce(expr, Expr.type$)));
+        this.setStartEnd(expr,startExpr,this.#curValEnd)
         continue;
       }
       ;
       if (this.#cur === Token.dot()) {
         (expr = this.call(sys.ObjUtil.coerce(expr, Expr.type$), true));
+        this.setStartEnd(expr,startExpr,this.#curValEnd)
         continue;
       }
       ;
       if (this.#cur === Token.arrow()) {
         (expr = this.dictGet(sys.ObjUtil.coerce(expr, Expr.type$)));
+        this.setStartEnd(expr,startExpr,this.#curValEnd)
         continue;
       }
       ;
       break;
     }
     ;
-    return sys.ObjUtil.coerce(expr, Expr.type$);
+    return this.setStartEnd(sys.ObjUtil.coerce(expr, Expr.type$),startTermBase,this.#curValEnd);
   }
 
   termBase() {
@@ -10391,15 +10467,16 @@ class Parser extends sys.Obj {
   }
 
   lamdba() {
+    let startExpr = this.#curValStart
     let loc = this.curLoc();
     if (this.#cur === Token.id()) {
-      return this.lambda1();
+      return this.setStartEnd(this.lambda1(), startExpr)
     }
     ;
     if (this.#cur === Token.lparen()) {
       let expr = this.parenExpr();
       if (sys.ObjUtil.is(expr, Fn.type$)) {
-        return sys.ObjUtil.coerce(expr, Fn.type$);
+        return this.setStartEnd(sys.ObjUtil.coerce(expr, Fn.type$), startExpr)
       }
       ;
     }
@@ -10452,14 +10529,15 @@ class Parser extends sys.Obj {
     return acc;
   }
 
-  param() {
+  param() {    
+    let exprStart = this.#curValStart
     let name = this.consumeId("func parameter name");
     if (this.#cur !== Token.colon()) {
-      return FnParam.make(name);
+      return this.setStartEnd(FnParam.make(name), exprStart);
     }
     ;
     this.consume();
-    return FnParam.make(name, this.expr());
+    return this.setStartEnd(FnParam.make(name, this.expr()), exprStart);
   }
 
   typeRef(lib) {
@@ -10644,7 +10722,9 @@ class Parser extends sys.Obj {
     this.#peekPeekValEnd = this.#tokenizer.valEndLoc();
     this.#peekPeekLine = this.#tokenizer.line();
     if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) {
-      this.#comments.push( new Comment( this.#curVal, this.#curValStart, this.#curValEnd ) )
+      const end = this.#curValEnd
+      end.filePos(end.filePos() -1 )
+      this.#comments.push( new Comment( this.#curVal, this.#curValStart, end ) )
       return this.consume(null)
     }
     let blankLines = this.#peekLine - this.#curLine - 1;
