@@ -8425,7 +8425,7 @@ class Tokenizer extends sys.Obj {
 
   typeof() { return Tokenizer.type$; }
 
-  #startLoc = null;
+  #startLoc = Loc.eval();
 
   startLoc(it) {
     if (it === undefined) {
@@ -8461,7 +8461,7 @@ class Tokenizer extends sys.Obj {
     }
   }
 
-  #valStartLoc = null;
+  #valStartLoc = Loc.eval();
 
   valStartLoc(it) {
     if (it === undefined) {
@@ -8473,7 +8473,7 @@ class Tokenizer extends sys.Obj {
     }
   }
 
-  #valEndLoc = null;
+  #valEndLoc = Loc.eval();
 
   valEndLoc(it) {
     if (it === undefined) {
@@ -8580,6 +8580,7 @@ class Tokenizer extends sys.Obj {
     }
     ;
     this.#valStartLoc = this.curLoc();
+    let isWord = false
     let nextTok = () => {
       if (sys.ObjUtil.equals(this.#cur, 47)) {
         if (sys.ObjUtil.equals(this.#peek, 47)) {
@@ -8599,6 +8600,7 @@ class Tokenizer extends sys.Obj {
       }
       ;
       if (sys.Int.isAlpha(this.#cur)) {
+        isWord = true
         return ((this$) => { let $_u126 = this$.word(); this$.#tok = $_u126; return $_u126; })(this);
       }
       ;
@@ -8626,7 +8628,8 @@ class Tokenizer extends sys.Obj {
     }
     let tok = nextTok()
     this.#valEndLoc = this.curLoc();
-    this.#valEndLoc.filePos(this.#valEndLoc.filePos() -1)
+    this.#valEndLoc.filePos(this.#valEndLoc.filePos() - 1)
+    if (isWord) this.#valEndLoc.filePos(this.#valEndLoc.filePos() - 1)
     return tok
   }
 
@@ -9631,13 +9634,13 @@ class Parser extends sys.Obj {
     return this.#curVal;
   }
 
-  #curValStart = null;
+  #curValStart = Loc.eval();
 
   curValStart() {
     return this.#curValStart;
   }
 
-  #curValEnd = null;
+  #curValEnd = Loc.eval();
 
   curValEnd() {
     return this.#curValEnd;
@@ -9670,13 +9673,13 @@ class Parser extends sys.Obj {
     return this.#peekVal;
   }
 
-  #peekValStart = null;
+  #peekValStart = Loc.eval();
 
   peekValStart() {
     return this.#peekValStart;
   }
 
-  #peekValEnd = null;
+  #peekValEnd = Loc.eval();
 
   peekValEnd() {
     return this.#peekValEnd;
@@ -9697,12 +9700,12 @@ class Parser extends sys.Obj {
   // private field reflection only
   __peekPeekVal(it) { if (it === undefined) return this.#peekPeekVal; else this.#peekPeekVal = it; }
 
-  #peekPeekValStart = null;
+  #peekPeekValStart = Loc.eval();
 
   // private field reflection only
   __peekPeekValStart(it) { if (it === undefined) return this.#peekPeekValStart; else this.#peekPeekValStart = it; }
 
-  #peekPeekValEnd = null;
+  #peekPeekValEnd = Loc.eval();
 
   // private field reflection only
   __peekPeekValEnd(it) { if (it === undefined) return this.#peekPeekValEnd; else this.#peekPeekValEnd = it; }
@@ -9736,15 +9739,6 @@ class Parser extends sys.Obj {
 
   // private field reflection only
   __inSpec(it) { if (it === undefined) return this.#inSpec; else this.#inSpec = it; }
-
-  #blankLinesBefore = new Map();
-
-  // private field reflection only
-  __blankLinesBefore(it) { if (it === undefined) return this.#blankLinesBefore; else this.#blankLinesBefore = it; }
-
-  blankLinesBefore() {
-    return this.#blankLinesBefore;
-  }
 
   #comments = [];
 
@@ -10025,7 +10019,7 @@ class Parser extends sys.Obj {
     }
     ;
     let expr = Throw.make(this.expr())
-    return this.setStartEnd(ret, exprStart,expr.expr().endLoc())
+    return this.setStartEnd(expr, exprStart, expr.expr().endLoc())
   }
 
   tryCatchExpr() {
@@ -10042,7 +10036,7 @@ class Parser extends sys.Obj {
     ;
     let catcher = this.expr();
     let expr = TryCatch.make(body, errVarName, catcher)
-    return this.setStartEnd(ret, exprStart,expr.expr().endLoc())
+    return this.setStartEnd(expr, exprStart, catcher.endLoc())
   }
 
   list() {
@@ -10762,14 +10756,15 @@ class Parser extends sys.Obj {
     this.#peekPeekValStart = this.#tokenizer.valStartLoc();
     this.#peekPeekValEnd = this.#tokenizer.valEndLoc();
     this.#peekPeekLine = this.#tokenizer.line();
+    let blankLines = this.#peekValStart.line() - this.#curValEnd.line() - 1;
+    let blanksStart = Loc.make(this.#curValEnd.file(), this.#curValEnd.line() + 1,this.#curValEnd.filePos() + 2)
+    let blanksEnd = Loc.make(this.#curValEnd.file(), blanksStart.line() + blankLines - 1,blanksStart.filePos() + blankLines - 1)
+    
     if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) {
       this.#comments.push( new Comment( this.#curVal, this.#curValStart, this.#curValEnd, this.#cur.name() ) )
       return this.consume(null)
     }
-    let blankLines = this.#peekLine - this.#curLine - 1;
-    if ( blankLines > 0 ){
-      this.#blankLinesBefore.set(this.#curLine + this.#startLoc.line(),blankLines)
-    }
+    if ( blankLines > 0 )    this.#comments.push( new Comment( blankLines, blanksStart, blanksEnd, "blanklines" ) )
     return;
   }
 
