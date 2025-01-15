@@ -183,10 +183,16 @@ function printAxon(path, options, print) {
         ), pb.hardlineWithoutBreakParent, "end"]
 
       case axon.ExprType.ifExpr(): {
-        let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " ", path.call(print, 'ifExpr')]
+        let ifDoc = path.call(print, 'ifExpr')
+        let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " "]
         if ("elseExpr" in node) {
-          docs = docs.concat(pb.line, "else ", path.call(print, "elseExpr"))
+          if (node.ifExpr.type == axon.ExprType.block()) {
+            ifDoc.pop()
+            ifDoc.pop()
+          }
+          docs = docs.concat([ifDoc, pb.line, "else ", path.call(print, "elseExpr")])
         }
+        else docs.push(ifDoc)
         return pb.group(docs)
       }
 
@@ -197,7 +203,12 @@ function printAxon(path, options, print) {
         return ["throw ", path.call(print, 'expr')]
 
       case axon.ExprType.tryExpr(): {
-        const docs = ["try", pb.indent([pb.line, path.call(print, 'tryExpr')]), pb.line, "catch"]
+        let tryDoc = path.call(print, 'tryExpr')
+        if (node.tryExpr.type == axon.ExprType.block()) {
+          tryDoc.pop()
+          tryDoc.pop()
+        }
+        const docs = ["try", tryDoc, pb.line, "catch"]
         if ("errVarName" in node) {
           docs.push("(" + node.errVarName.value + ")")
         }
