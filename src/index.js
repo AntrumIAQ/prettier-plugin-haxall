@@ -177,19 +177,18 @@ function printAxon(path, options, print) {
       case axon.ExprType.trapCall():
         return [path.call(print, "lhs"), "->", node.rhs.val.value]
 
-      case axon.ExprType.block():
-        return ["do", pb.indent(
+      case axon.ExprType.block(): {
+        let docs = ["do", pb.indent(
           [pb.hardlineWithoutBreakParent, pb.join(pb.hardlineWithoutBreakParent, path.map(print, 'exprs'))]
-        ), pb.hardlineWithoutBreakParent, "end"]
+        ), pb.hardlineWithoutBreakParent]
+        if (path.parent.type !== axon.ExprType.ifExpr() && path.parent.type !== axon.ExprType.tryExpr()) docs.push("end")
+        return docs
+      }
 
       case axon.ExprType.ifExpr(): {
         let ifDoc = path.call(print, 'ifExpr')
         let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " "]
         if ("elseExpr" in node) {
-          if (node.ifExpr.type == axon.ExprType.block()) {
-            ifDoc.pop()
-            ifDoc.pop()
-          }
           docs = docs.concat([ifDoc, pb.line, "else ", path.call(print, "elseExpr")])
         }
         else docs.push(ifDoc)
@@ -203,12 +202,7 @@ function printAxon(path, options, print) {
         return ["throw ", path.call(print, 'expr')]
 
       case axon.ExprType.tryExpr(): {
-        let tryDoc = path.call(print, 'tryExpr')
-        if (node.tryExpr.type == axon.ExprType.block()) {
-          tryDoc.pop()
-          tryDoc.pop()
-        }
-        const docs = ["try", tryDoc, pb.line, "catch"]
+        const docs = ["try", path.call(print, 'tryExpr'), pb.line, "catch"]
         if ("errVarName" in node) {
           docs.push("(" + node.errVarName.value + ")")
         }
