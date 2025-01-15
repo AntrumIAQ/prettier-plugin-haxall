@@ -10081,7 +10081,7 @@ class Parser extends sys.Obj {
     if (this.#cur === close) {
       let exprEnd = this.#curValEnd
       this.consume();
-      return this.setStartEnd(DictExpr.empty(), exprEnd)
+      return this.setStartEnd(DictExpr.empty(), exprStart, exprEnd)
     }
     ;
     let loc = this.curLoc();
@@ -10484,10 +10484,9 @@ class Parser extends sys.Obj {
   dictGet(target) {
     let startLoc = this.#curValStart
     this.consume(Token.arrow());
+    let endLoc = this.#curValEnd
     let name = this.consumeId("dict tag name");
-    const call = TrapCall.make(target, name);
-    call.startLoc(startLoc)
-    return call
+    return this.setStartEnd( TrapCall.make(target, name), startLoc, endLoc )
   }
 
   lamdba() {
@@ -10661,7 +10660,7 @@ class Parser extends sys.Obj {
     if (expr.type() === ExprType.block()) {
       let block = sys.ObjUtil.coerce(expr, Block.type$);
       if (sys.ObjUtil.equals(block.exprs().last().type(), ExprType.returnExpr())) {
-        return Block.make(block.exprs().dup().set(-1, this.optimizeLastReturn(sys.ObjUtil.coerce(block.exprs().last(), Expr.type$))));
+        return this.setStartEnd(Block.make(block.exprs().dup().set(-1, this.optimizeLastReturn(sys.ObjUtil.coerce(block.exprs().last(), Expr.type$)))), block.startLoc(), block.endLoc());
       }
       ;
     }
@@ -10762,9 +10761,13 @@ class Parser extends sys.Obj {
     
     if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) {
       this.#comments.push( new Comment( this.#curVal, this.#curValStart, this.#curValEnd, this.#cur.name() ) )
+      //console.log( "comment", this.#curValStart.line(), this.#curValStart.filePos(), this.#curValEnd.line(), this.#curValEnd.filePos() )
       return this.consume(null)
     }
-    if ( blankLines > 0 )    this.#comments.push( new Comment( blankLines, blanksStart, blanksEnd, "blanklines" ) )
+    if ( blankLines > 0 && blanksStart.line() > 1)   {
+       this.#comments.push( new Comment( "blank line", blanksStart, blanksEnd, "blanklines" ) )
+       //console.log( "blank", blanksStart.line(), blanksStart.filePos(), blanksEnd.line(), blanksEnd.filePos() )
+    }
     return;
   }
 

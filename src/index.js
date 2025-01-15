@@ -94,8 +94,12 @@ function printAxon(path, options, print) {
 
     case "literal":
       if (node.value === null) return "null"
-      if (typeof node.value == "string") return '"' + node.value + '"'
-      return (typeof node.value == "object" && "toStr" in node.value) ? node.value.toStr() : String(node.value)
+      if (typeof node.value == "string") return sys.Str.toCode(node.value)
+      if (typeof node.value == "object") {
+        if ("toCode" in node.value) return node.value.toCode()
+        if ("toStr" in node.value) return node.value.toStr()
+      }
+      return String(node.value)
 
     case axon.ExprType.literal():
       return path.call(print, "val")
@@ -145,7 +149,7 @@ function printAxon(path, options, print) {
       return node.name.value
 
     case axon.ExprType.func(): {
-      const needsParens = path.parent === null || path.parent.dict !== undefined || node.params.length > 1
+      const needsParens = path.parent === null || path.parent.dict !== undefined || node.params.length != 1
       let docs = []
       if (needsParens) docs.push("(")
       docs = docs.concat([pb.join(", ", path.map(print, 'params'))])
@@ -286,16 +290,18 @@ function popEnd(docs) {
 }
 
 function parseTrio(text, options) {
-  const ast = { children: [] }
+  const ast = { children: [], comments: [] }
   const reader = haystack.TrioReader.make(sys.Str.in(text))
   reader.eachDict((value) => {
     ast.children.push({
-      start: reader.recLineNum(),
-      srcStart: reader.srcLineNum(),
-      end: reader.__lineNum(),
+      start: axon.Loc.make(options.filepath, reader.recLineNum(), reader.recFilePos()),
+      end: axon.Loc.make(options.filepath, reader.__lineNum(), reader.filePos()),
       dict: value,
-      axon: value.has("src") ? parseAxon(value.get("src"), options, options, axon.Loc.make(options.filepath, reader.srcLineNum() - 1)) : null
+      axon: value.has("src") ? parseAxon(value.get("src"), options, options, axon.Loc.make(options.filepath, reader.srcLineNum() - 1, reader.srcFilePos())) : null
     })
+    if (ast.children[ast.children.length - 1].axon !== null) {
+      ast.comments = ast.comments.concat(ast.children[ast.children.length - 1].axon.comments)
+    }
   });
   return ast
 }
@@ -367,6 +373,29 @@ function printTrio(path, options, print) {
   return pb.concat(docs)
 }
 
+function locStart(node) {
+  if (node.start === undefined) {
+    return 0
+  }
+  if (node.start === null) {
+    return 0
+  }
+  return node.start.filePos()
+}
+
+function locEnd(node) {
+  if (node.end === undefined) {
+    return 0
+  }
+  if (node.end === null) {
+    return 0
+  }
+  if (node.type == "commentML") {
+    return node.end.filePos() + 1
+  }
+  return node.end.filePos()
+}
+
 const languages = [
   {
     extensions: ['.trio'],
@@ -383,62 +412,60 @@ const languages = [
 const parsers = {
   'trio-parse': {
     parse: parseTrio,
+    locStart: locStart,
+    locEnd: locEnd,
     astFormat: 'trio-ast'
   },
   'axon-parse': {
     parse: parseAxon,
-    locStart: (node) => {
-      if (node.start === undefined) {
-        return 0
-      }
-      if (node.start === null) {
-        return 0
-      }
-      return node.start.filePos()
-    },
-    locEnd: (node) => {
-      if (node.end === undefined) {
-        return 0
-      }
-      if (node.type == "commentML") {
-        return node.end.filePos() + 1
-      }
-      return node.end.filePos()
-    },
+    locStart: locStart,
+    locEnd: locEnd,
     astFormat: 'axon-ast'
   }
 }
 const ignoredKeys = new Set(["_expr", "type", "start", "end"]);
 
+
+function printComment(path, options) {
+  let node = path.node
+  if (node.type == "commentSL") return ["//", node.value]
+  if (node.type == "commentML") {
+    if (node.value.includes("\n")) {
+      const lines = node.value.split('\n').map((line) => line.trim())
+      if (lines.length > 0 && lines[lines.length - 1].length == 0) lines.pop()
+      if (lines.length > 0 && lines[0].length == 0) lines.shift()
+      return ["/*", pb.indent([pb.hardline, pb.join(pb.hardline, lines)]), pb.hardline, "*/"]
+    }
+    else return ["/*", node.value, "*/"]
+  }
+  if (node.type == "blanklines") return node.placement == "ownLine" ? "" : pb.hardline
+  return ""
+}
+
+function isBlockComment(node) { return node.type == "commentML" || node.type == "blanklines" }
+
+function canAttachComment(node) { return "start" in node && node.start !== null }
+
+function getVisitorKeys(node, nonTraversableKeys) {
+  return Object.keys(node).filter(
+    (key) => !nonTraversableKeys.has(key) && !ignoredKeys.has(key),
+  );
+}
+
 const printers = {
   'trio-ast': {
     print: printTrio,
-    printComment: (path, options) => comment.node.value
+    printComment: printComment,
+    isBlockComment: isBlockComment,
+    canAttachComment: canAttachComment,
+    getVisitorKeys: getVisitorKeys
   },
   'axon-ast': {
     print: printAxon,
-    printComment: (path, options) => {
-      let node = path.node
-      if (node.type == "commentSL") return ["// ", node.value]
-      if (node.type == "commentML") {
-        if (node.value.includes("\n")) {
-          const lines = node.value.split('\n').map((line) => line.trim())
-          if (lines.length > 0 && lines[lines.length - 1].length == 0) lines.pop()
-          if (lines.length > 0 && lines[0].length == 0) lines.shift()
-          return ["/*", pb.indent([pb.hardline, pb.join(pb.hardline, lines)]), pb.hardline, "*/"]
-        }
-        else return ["/*", node.value, "*/"]
-      }
-      if (node.type == "blanklines") return node.placement == "ownLine" ? "" : pb.hardline
-      return ""
-    },
-    isBlockComment: (node) => node.type == "commentML" || node.type == "blanklines",
-    canAttachComment: (node) => "start" in node && node.start !== null,
-    getVisitorKeys: (node, nonTraversableKeys) => {
-      return Object.keys(node).filter(
-        (key) => !nonTraversableKeys.has(key) && !ignoredKeys.has(key),
-      );
-    }
+    printComment: printComment,
+    isBlockComment: isBlockComment,
+    canAttachComment: canAttachComment,
+    getVisitorKeys: getVisitorKeys
   }
 }
 
