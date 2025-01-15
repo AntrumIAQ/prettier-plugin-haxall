@@ -227,12 +227,12 @@ function printAxon(path, options, print) {
 
     case axon.ExprType.dotCall(): {
       let isDotCallLeaf = path.parent.type != axon.ExprType.dotCall()
-      if (isDotCallLeaf) options.dotCallLeafGroupId = node.start.filePos
+      if (isDotCallLeaf) options.dotCallLeafGroupId = node.start.filePos()
       let docs = [path.call(print, "lhs")]
       const argDocs = path.map(print, 'args')
 
       let trailingLamdba = null
-      if (node.args.length > 0 && node.args[node.args.length - 1].type == axon.ExprType.func() && isDotCallLeaf) {
+      if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1].type == axon.ExprType.func() && node.args[node.args.length - 1].params.length == 1) {
         trailingLamdba = argDocs.splice(-1, 1).pop()
       }
 
@@ -250,7 +250,7 @@ function printAxon(path, options, print) {
         }
       }
       if (isDotCallLeaf) docs = pb.indent(docs)
-      docs = pb.group(docs, { id: isDotCallLeaf ? node.start.filePos : null })
+      docs = pb.group(docs, { id: isDotCallLeaf ? node.start.filePos() : null })
       return docs
     }
 
@@ -294,7 +294,7 @@ function parseTrio(text, options) {
       srcStart: reader.srcLineNum(),
       end: reader.__lineNum(),
       dict: value,
-      axon: value.has("src") ? parseAxon(value.get("src"), options, options, axon.Loc.make("unknown", reader.srcLineNum())) : null
+      axon: value.has("src") ? parseAxon(value.get("src"), options, options, axon.Loc.make(options.filepath, reader.srcLineNum() - 1)) : null
     })
   });
   return ast
@@ -418,17 +418,19 @@ const printers = {
   'axon-ast': {
     print: printAxon,
     printComment: (path, options) => {
-      if (path.node.type == "commentSL") return ["// ", path.node.value]
-      if (path.node.type == "commentML") {
-        if (path.node.value.includes("\n")) {
-          const lines = path.node.value.split('\n').map((line) => line.trim())
+      let node = path.node
+      if (node.type == "commentSL") return ["// ", node.value]
+      if (node.type == "commentML") {
+        if (node.value.includes("\n")) {
+          const lines = node.value.split('\n').map((line) => line.trim())
           if (lines.length > 0 && lines[lines.length - 1].length == 0) lines.pop()
           if (lines.length > 0 && lines[0].length == 0) lines.shift()
           return ["/*", pb.indent([pb.hardline, pb.join(pb.hardline, lines)]), pb.hardline, "*/"]
         }
-        else return ["/*", path.node.value, "*/"]
+        else return ["/*", node.value, "*/"]
       }
-      if (path.node.type == "blanklines") return pb.hardline
+      if (node.type == "blanklines") return node.placement == "ownLine" ? "" : pb.hardline
+      return ""
     },
     isBlockComment: (node) => node.type == "commentML" || node.type == "blanklines",
     canAttachComment: (node) => "start" in node && node.start !== null,
