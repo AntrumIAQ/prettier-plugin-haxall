@@ -388,6 +388,9 @@ const parsers = {
       if (node.end === undefined) {
         return 0
       }
+      if (node.type == "commentML") {
+        return node.end.filePos() + 1
+      }
       return node.end.filePos()
     },
     astFormat: 'axon-ast'
@@ -407,7 +410,9 @@ const printers = {
       if (path.node.type == "commentML") {
         if (path.node.value.includes("\n")) {
           const lines = path.node.value.split('\n').map((line) => line.trim())
-          return ["/*", pb.indent(pb.join(pb.hardline, lines)), pb.hardline, "*/"]
+          if (lines.length > 0 && lines[lines.length - 1].length == 0) lines.pop()
+          if (lines.length > 0 && lines[0].length == 0) lines.shift()
+          return ["/*", pb.indent([pb.hardline, pb.join(pb.hardline, lines)]), pb.hardline, "*/"]
         }
         else return ["/*", path.node.value, "*/"]
       }
