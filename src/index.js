@@ -93,18 +93,20 @@ function printAxon(path, options, print) {
       return path.map(print, 'value')
 
     case "literal":
-      if (node.value === null) return "null"
-      if (typeof node.value == "string") return sys.Str.toCode(node.value)
-      if (typeof node.value == "object") {
-        if ("toCode" in node.value) return node.value.toCode()
-        if ("toStr" in node.value) return node.value.toStr()
-      }
       return String(node.value)
 
     case axon.ExprType.literal():
+      if (node.start !== null) {
+        return options.originalText.substring(node.start.filePos(), node.end.filePos() + 1)
+      }
       return path.call(print, "val")
 
-    case axon.ExprType.list():
+    case axon.ExprType.list(): {
+      let trailingComma = false
+      if (node.vals.length > 0) {
+        let lastNode = node.vals[node.vals.length - 1]
+        trailingComma = lastNode.end !== null && options.originalText[lastNode.end.filePos() + 1] == ','
+      }
       return pb.group(
         [
           '[',
@@ -114,16 +116,26 @@ function printAxon(path, options, print) {
               pb.join([',', pb.line], path.map(print, 'vals'))
             ]
           ),
-          pb.softline,
+          trailingComma ? ',' : '', pb.softline,
           ']'
-        ]
+        ], { shouldBreak: trailingComma }
       )
+    }
 
     case axon.ExprType.dict():
-      const keys = []
-      node.names.forEach((name) => keys.push(haystack.Etc.isTagName(name.value) ? name.value : sys.Str.toCode(name.value)))
+      const keys = path.map(print, "names")
       const values = path.map(print, "vals")
-      const pairs = keys.map((k, i) => [k, values[i] == "marker" ? "" : [": ", values[i]]]);
+      const longestKeyLength = Math.max(...(keys.map(k => k.length)));
+      const pairs = keys.map((k, i) => [k, values[i] == "marker" ? "" : [":", pb.ifBreak(" ".repeat(longestKeyLength - k.length + 1), " "), values[i]]]);
+
+      let trailingComma = false
+      if (node.vals.length > 0) {
+        let lastIndex = node.vals.length - 1
+        let isMarker = values[lastIndex] == "marker" || values[lastIndex] == "<marker>"
+        let lastNode = isMarker ? node.names[lastIndex] : node.vals[lastIndex]
+        trailingComma = lastNode.end !== null && options.originalText[lastNode.end.filePos() + 1] == ','
+      }
+
       return pb.group(
         [
           '{',
@@ -131,9 +143,9 @@ function printAxon(path, options, print) {
             pb.softline,
             pb.join([',', pb.line], pairs)
           ]),
-          pb.softline,
+          trailingComma ? ',' : '', pb.softline,
           '}'
-        ]
+        ], { shouldBreak: trailingComma }
       )
 
     case axon.ExprType.range():

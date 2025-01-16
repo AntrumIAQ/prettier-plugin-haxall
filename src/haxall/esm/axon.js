@@ -3851,18 +3851,19 @@ class DictExpr extends Expr {
   // private field reflection only
   __constValRef(it) { if (it === undefined) return this.#constValRef; else this.#constValRef = it; }
 
-  static make(loc,names,vals,allValsConst) {
+  static make(loc,names,nameExprs,vals,allValsConst) {
     const $self = new DictExpr();
-    DictExpr.make$($self,loc,names,vals,allValsConst);
+    DictExpr.make$($self,loc,names,nameExprs,vals,allValsConst);
     return $self;
   }
 
-  static make$($self,loc,names,vals,allValsConst) {
+  static make$($self,loc,names,nameExprs,vals,allValsConst) {
     const this$ = $self;
     Expr.make$($self);
     $self.#loc = loc;
     $self.#names = sys.ObjUtil.coerce(((this$) => { let $_u49 = names; if ($_u49 == null) return null; return sys.ObjUtil.toImmutable(names); })($self), sys.Type.find("sys::Str[]"));
     $self.#vals = sys.ObjUtil.coerce(((this$) => { let $_u50 = vals; if ($_u50 == null) return null; return sys.ObjUtil.toImmutable(vals); })($self), sys.Type.find("axon::Expr[]"));
+    $self.nameExprs = nameExprs
     if (allValsConst) {
       let tags = sys.Map.__fromLiteral([], [], sys.Type.find("sys::Str"), sys.Type.find("sys::Obj?"));
       tags.ordered(true);
@@ -3905,7 +3906,7 @@ class DictExpr extends Expr {
   }
 
   walk(f) {
-    sys.Func.call(f, "names", this.#names);
+    sys.Func.call(f, "names", this.nameExprs);
     sys.Func.call(f, "vals", this.#vals);
     return;
   }
@@ -3936,7 +3937,7 @@ class DictExpr extends Expr {
   }
 
   static static$init() {
-    DictExpr.#empty = DictExpr.make(Loc.unknown(), sys.ObjUtil.coerce(sys.Str.type$.emptyList(), sys.Type.find("sys::Str[]")), sys.ObjUtil.coerce(Expr.type$.emptyList(), sys.Type.find("axon::Expr[]")), true);
+    DictExpr.#empty = DictExpr.make(Loc.unknown(), sys.ObjUtil.coerce(sys.Str.type$.emptyList(), sys.Type.find("sys::Str[]")), sys.ObjUtil.coerce(Expr.type$.emptyList(), sys.Type.find("axon::Expr[]")), sys.ObjUtil.coerce(Expr.type$.emptyList(), sys.Type.find("axon::Expr[]")), true);
     return;
   }
 
@@ -8579,8 +8580,7 @@ class Tokenizer extends sys.Obj {
       break;
     }
     ;
-    this.#valStartLoc = this.curLoc();
-    let isWord = false
+    this.#valStartLoc = this.peekLoc();
     let nextTok = () => {
       if (sys.ObjUtil.equals(this.#cur, 47)) {
         if (sys.ObjUtil.equals(this.#peek, 47)) {
@@ -8600,7 +8600,6 @@ class Tokenizer extends sys.Obj {
       }
       ;
       if (sys.Int.isAlpha(this.#cur)) {
-        isWord = true
         return ((this$) => { let $_u126 = this$.word(); this$.#tok = $_u126; return $_u126; })(this);
       }
       ;
@@ -8628,8 +8627,6 @@ class Tokenizer extends sys.Obj {
     }
     let tok = nextTok()
     this.#valEndLoc = this.curLoc();
-    this.#valEndLoc.filePos(this.#valEndLoc.filePos() - 1)
-    if (isWord) this.#valEndLoc.filePos(this.#valEndLoc.filePos() - 1)
     return tok
   }
 
@@ -8639,6 +8636,7 @@ class Tokenizer extends sys.Obj {
       s.addChar(this.#cur);
       this.consume();
     }
+    this.#valEndLoc = this.curLoc();
     ;
     let id = s.toStr();
     this.#val = id;
@@ -9340,6 +9338,10 @@ class Tokenizer extends sys.Obj {
   }
 
   curLoc() {
+    return Loc.make(this.#startLoc.file(), sys.Int.plus(this.#startLoc.line(), this.#line),sys.Int.plus(this.#startLoc.filePos(), this.#filePos - 1));
+  }
+
+  peekLoc() {
     return Loc.make(this.#startLoc.file(), sys.Int.plus(this.#startLoc.line(), this.#line),sys.Int.plus(this.#startLoc.filePos(), this.#filePos));
   }
 
@@ -10086,6 +10088,7 @@ class Parser extends sys.Obj {
     ;
     let loc = this.curLoc();
     let names = sys.List.make(sys.Str.type$);
+    let nameExprs = sys.List.make(Expr.type$);
     let vals = sys.List.make(Expr.type$);
     let allValsConst = true;
     while (true) {
@@ -10096,15 +10099,20 @@ class Parser extends sys.Obj {
       }
       ;
       let name = null;
+      let nameExpr = null;
       if ((this.#cur === Token.val() && sys.ObjUtil.is(this.#curVal, sys.Str.type$))) {
         (name = sys.ObjUtil.coerce(this.#curVal, sys.Str.type$.toNullable()));
+        nameExpr = this.setStartEnd(Literal.make(this.#curVal),this.#curValStart,this.#curValEnd);
         this.consume();
       }
       else {
+        nameExpr = this.setStartEnd(Literal.make(this.#curVal),this.#curValStart,this.#curValEnd);
         (name = this.consumeIdOrKeyword("dict tag name"));
+        nameExpr.val = name
       }
       ;
       names.add(sys.ObjUtil.coerce(name, sys.Str.type$));
+      nameExprs.add(nameExpr)
       if (this.#cur === Token.colon()) {
         if (val === Literal.removeVal()) {
           throw this.err(sys.Str.plus("Cannot have both - and val in dict: ", name));
@@ -10136,7 +10144,7 @@ class Parser extends sys.Obj {
     ;
     let exprEnd = this.#curValEnd
     this.consume(close);
-    return this.setStartEnd(DictExpr.make(loc, names, vals, allValsConst), exprStart, exprEnd)
+    return this.setStartEnd(DictExpr.make(loc, names, nameExprs, vals, allValsConst), exprStart, exprEnd)
   }
 
   constDict() {
