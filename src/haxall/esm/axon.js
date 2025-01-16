@@ -10406,7 +10406,7 @@ class Parser extends sys.Obj {
           args.add(this.lambda1());
         }
         ;
-        return this.setStartEnd(this.toDotCall(methodName, args), target.startLoc(), endMethodName)
+        return this.setStartEnd(this.toDotCall(methodName, args), target.startLoc(), args.isEmpty() ? endMethodName : args.last().endLoc())
       }
       ;
     }
