@@ -222,7 +222,7 @@ function printAxon(path, options, print) {
 
     case axon.ExprType.and("and"):
     case axon.ExprType.or("or"):
-      return pb.group([path.call(print, "lhs"), pb.line, node.type.op(), " ", path.call(print, "rhs")])
+      return pb.group([path.call(print, "lhs"), " ", node.type.op(), pb.line, path.call(print, "rhs")])
 
     case axon.ExprType.assign("="):
     case axon.ExprType.eq("=="):
@@ -301,6 +301,12 @@ function popEnd(docs) {
   }
 }
 
+class TrioSrc {
+  constructor(src) {
+    this.src = src
+  }
+}
+
 function parseTrio(text, options) {
   const ast = { children: [], comments: [] }
   const reader = haystack.TrioReader.make(sys.Str.in(text))
@@ -309,11 +315,8 @@ function parseTrio(text, options) {
       start: axon.Loc.make(options.filepath, reader.recLineNum(), reader.recFilePos()),
       end: axon.Loc.make(options.filepath, reader.__lineNum(), reader.filePos()),
       dict: value,
-      axon: value.has("src") ? parseAxon(value.get("src"), options, options, axon.Loc.make(options.filepath, reader.srcLineNum() - 1, reader.srcFilePos())) : null
+      src: new TrioSrc(value.get("src"))
     })
-    if (ast.children[ast.children.length - 1].axon !== null) {
-      ast.comments = ast.comments.concat(ast.children[ast.children.length - 1].axon.comments)
-    }
   });
   return ast
 }
@@ -321,7 +324,6 @@ function parseTrio(text, options) {
 function printTrio(path, options, print) {
   const node = path.getNode()
   if ("children" in node) return pb.join(pb.concat(["---", pb.hardline]), path.map(print, "children"))
-  if ("type" in node) return printAxon(path, options, print)
 
   let docs = []
 
@@ -364,7 +366,7 @@ function printTrio(path, options, print) {
 
     let str = sys.ObjUtil.coerce(v, sys.Str.type$);
     if (n == "src") {
-      docs = docs.concat([pb.indent([pb.hardline, path.call(print, "axon")]), pb.hardline])
+      docs = docs.concat([pb.indent([pb.hardline, path.call(print, "src")]), pb.hardline])
     }
     else if (!sys.Str.contains(str, "\n")) {
       if (haystack.TrioWriter.useQuotes(str)) docs.push(sys.Str.toCode(str))
@@ -382,7 +384,7 @@ function printTrio(path, options, print) {
     }
     return
   })
-  return pb.concat(docs)
+  return docs
 }
 
 function locStart(node) {
@@ -467,10 +469,11 @@ function getVisitorKeys(node, nonTraversableKeys) {
 const printers = {
   'trio-ast': {
     print: printTrio,
-    printComment: printComment,
-    isBlockComment: isBlockComment,
-    canAttachComment: canAttachComment,
-    getVisitorKeys: getVisitorKeys
+    embed: (path, options) => {
+      if (path.node instanceof TrioSrc && path.node.src !== null) {
+        return async (textToDoc) => await textToDoc(path.node.src, { parser: "axon-parse" })
+      }
+    },
   },
   'axon-ast': {
     print: printAxon,
