@@ -442,7 +442,18 @@ const ignoredKeys = new Set(["_expr", "type", "start", "end"]);
 
 function printComment(path, options) {
   let node = path.node
-  if (node.type == "commentSL") return ["//", node.value]
+  if (node.type == "commentSL") {
+    let precedingSpaces = 0
+    if (node.placement == "remaining") {
+      for (let index = node.start.filePos() - 1; index > 0; --index) {
+        let ch = options.originalText[index]
+        if (ch != ' ') break
+        precedingSpaces++
+      }
+    }
+    precedingSpaces = Math.max(0, precedingSpaces - 1)
+    return [" ".repeat(precedingSpaces), "//", node.value]
+  }
   if (node.type == "commentML") {
     if (node.value.includes("\n")) {
       const lines = node.value.split('\n').map((line) => line.trim())
