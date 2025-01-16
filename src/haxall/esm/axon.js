@@ -4222,6 +4222,7 @@ class CompDef extends TopFn {
     const this$ = this;
     TopFn.prototype.walk.call(this, f);
     let cellsMap = sys.Map.__fromLiteral([], [], sys.Type.find("sys::Str"), sys.Type.find("haystack::Dict"));
+    cellsMap.ordered(true)
     this.cells().each((cell) => {
       cellsMap.set(cell.name(), cell);
       return;
@@ -4648,6 +4649,34 @@ class MCellDef extends haystack.WrapDict {
   constructor() {
     super();
     const this$ = this;
+  }
+
+  #startLoc = null;
+
+  startLoc(it) {
+    if (it === undefined) {
+      return this.#startLoc;
+    }
+    else {
+      this.#startLoc = it;
+      return;
+    }
+  }
+
+  #endLoc = null;
+
+  endLoc(it) {
+    if (it === undefined) {
+      return this.#endLoc;
+    }
+    else {
+      this.#endLoc = it;
+      return;
+    }
+  }
+
+  type() {
+    return ExprType.celldef();
   }
 
   typeof() { return MCellDef.type$; }
@@ -9966,12 +9995,12 @@ class Parser extends sys.Obj {
     let name = this.consumeIdOrKeyword("Expecting cell name");
     this.consume(Token.colon());
     let meta = this.constDict();
-    if (meta.has("name")) {
+    if (meta.constVal().has("name")) {
       throw this.err("Comp cell meta cannot define 'name' tag");
     }
     ;
     this.eos();
-    return this.setStartEnd(MCellDef.make(compRef, index, name, meta), exprStart, meta.endLoc());
+    return this.setStartEnd(MCellDef.make(compRef, index, name, meta.constVal()), exprStart, meta.endLoc());
   }
 
   def() {
@@ -10153,7 +10182,7 @@ class Parser extends sys.Obj {
       throw this.err("Dict cannot use expressions", expr.loc());
     }
     ;
-    return sys.ObjUtil.coerce(expr.constVal(), haystack.Dict.type$);
+    return expr;
   }
 
   assignExpr() {
@@ -10765,17 +10794,19 @@ class Parser extends sys.Obj {
     this.#peekPeekLine = this.#tokenizer.line();
     let blankLines = this.#peekValStart.line() - this.#curValEnd.line() - 1;
     let blanksStart = Loc.make(this.#curValEnd.file(), this.#curValEnd.line() + 1,this.#curValEnd.filePos() + 2)
-    let blanksEnd = Loc.make(this.#curValEnd.file(), blanksStart.line() + blankLines - 1,blanksStart.filePos() + blankLines - 1)
-    
+    let blanksEnd = Loc.make(this.#curValEnd.file(), this.#peekValStart.line()  - 1,this.#peekValStart.filePos() - 1)
     if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) {
       this.#comments.push( new Comment( this.#curVal, this.#curValStart, this.#curValEnd, this.#cur.name() ) )
-      //console.log( "comment", this.#curValStart.line(), this.#curValStart.filePos(), this.#curValEnd.line(), this.#curValEnd.filePos() )
-      return this.consume(null)
+      //console.log( "comment", this.#curValStart.line(), this.#curValStart.filePos(), this.#curValEnd.line(), this.#curValEnd.filePos() )      
     }
+    
     if ( blankLines > 0 && blanksStart.line() > 1)   {
        this.#comments.push( new Comment( "blank line", blanksStart, blanksEnd, "blanklines" ) )
        //console.log( "blank", blanksStart.line(), blanksStart.filePos(), blanksEnd.line(), blanksEnd.filePos() )
     }
+
+    if ( this.#cur === Token.commentML() || this.#cur === Token.commentSL() ) this.consume(null)
+
     return;
   }
 

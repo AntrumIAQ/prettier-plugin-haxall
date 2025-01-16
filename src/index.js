@@ -32,11 +32,9 @@ class AxonTree {
     if (this.type == axon.ExprType.compdef()) {
       expr.walk((key, value) => { this[key] = value })
       this.body = makeAxonNode(this.body)
-
-      const cells = new Array()
-      cells.type = "array"
-      this.cells.each((value, key) => cells.push(new AxonCellDef(key, value)))
-      this.cells = cells
+      this.cell_names = haystack.Etc.dictNames(this.cells)
+      this.cell_values = []
+      haystack.Etc.dictVals(this.cells).each((v) => { v.type = v.type(); this.cell_values.push(v) })
     }
     else {
       expr.walk((key, value) => { this[key] = makeAxonNode(value) })
@@ -65,18 +63,8 @@ class AxonLeaf {
   }
 }
 
-class AxonCellDef {
-  constructor(key, value, start) {
-    this.type = axon.ExprType.celldef()
-    this.key = key
-    this.value = value
-    this.start = start.startLoc()
-    this.end = end.endLoc()
-  }
-}
-
-function parseAxon(text, options, options2, loc) {
-  if (loc === undefined) loc = axon.Loc.make(options.filepath, 0, 0)
+function parseAxon(text, options, options2) {
+  const loc = axon.Loc.make(options.filepath, options.trioline === undefined ? 0 : options.trioline - 1, 0)
   const ins = sys.Str.in(text);
   const parser = axon.Parser.make(loc, ins);
   const ast = new AxonTree(parser.parse())
@@ -170,11 +158,20 @@ function printAxon(path, options, print) {
       return docs
     }
 
-    case axon.ExprType.compdef():
-      return ["defcomp", pb.indent([pb.hardline, pb.join(pb.hardline, path.map(print, "cells")), pb.hardline, path.call(print, 'body')]), pb.hardline, "end"]
+    case axon.ExprType.compdef(): {
+      const keys = node.cell_names
+      const values = path.map(print, "cell_values")
+      const longestKeyLength = Math.max(...(keys.map(k => k.length)));
+      const pairs = []
+      keys.each((k, i) => { pairs.push([k, ":", " ".repeat(longestKeyLength - k.length + 1), values[i]]) });
 
-    case axon.ExprType.celldef():
-      return node.value.toStr().replace("is:", "is:^")
+      return ["defcomp", pb.indent([pb.hardline, pb.join(pb.hardline, pairs), pb.hardline, path.call(print, 'body')]), pb.hardline, "end"]
+    }
+
+    case axon.ExprType.celldef(): {
+      let str = node.toStr().replace("is:", "is:^")
+      return str.substring(str.indexOf(':') + 1).trim()
+    }
 
     case axon.ExprType.call():
     case axon.ExprType.partialCall():
@@ -302,8 +299,9 @@ function popEnd(docs) {
 }
 
 class TrioSrc {
-  constructor(src) {
+  constructor(src, line) {
     this.src = src
+    this.line = line
   }
 }
 
@@ -315,7 +313,7 @@ function parseTrio(text, options) {
       start: axon.Loc.make(options.filepath, reader.recLineNum(), reader.recFilePos()),
       end: axon.Loc.make(options.filepath, reader.__lineNum(), reader.filePos()),
       dict: value,
-      src: new TrioSrc(value.get("src"))
+      src: new TrioSrc(value.get("src"), reader.srcLineNum())
     })
   });
   return ast
@@ -463,11 +461,13 @@ function printComment(path, options) {
     }
     else return ["/*", node.value, "*/"]
   }
-  if (node.type == "blanklines") return node.placement == "ownLine" ? "" : pb.hardline
+  if (node.type == "blanklines") {
+    return node.placement == "ownLine" ? "" : pb.hardline
+  }
   return ""
 }
 
-function isBlockComment(node) { return node.type == "commentML" || node.type == "blanklines" }
+function isBlockComment(node) { return node.type == "commentML" }
 
 function canAttachComment(node) { return "start" in node && node.start !== null }
 
@@ -482,7 +482,7 @@ const printers = {
     print: printTrio,
     embed: (path, options) => {
       if (path.node instanceof TrioSrc && path.node.src !== null) {
-        return async (textToDoc) => await textToDoc(path.node.src, { parser: "axon-parse" })
+        return async (textToDoc) => await textToDoc(path.node.src, { parser: "axon-parse", trioline: path.node.line })
       }
     },
   },
