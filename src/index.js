@@ -263,9 +263,9 @@ function printAxon(path, options, print) {
     case axon.ExprType.div("/"): {
       let lOpBreak = options.originalText[node.lhs._end.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
       let rOpBreak = options.originalText[options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
-      let docs = [parens(node.lhs, path.call(print, "lhs"), "L"), lOpBreak, node._type.op(), rOpBreak, parens(node.rhs, path.call(print, "rhs"), "R")]
+      let docs = [parens(node.lhs, path.call(print, "lhs")), lOpBreak, node._type.op(), rOpBreak, parens(node.rhs, path.call(print, "rhs"))]
       if (node._start.filePos() != node.lhs._start.filePos() && node._end.filePos() != node.rhs._end.filePos()) {
-        docs = parens(node, docs, "B")
+        docs = parens(node, docs)
       }
       return pb.group(docs)
     }
