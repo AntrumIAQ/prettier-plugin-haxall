@@ -10417,7 +10417,7 @@ class Parser extends sys.Obj {
     let methodName = "?";
     if (isMethod) {
       this.consume(Token.dot());
-      let endMethodName = this.#curValEnd;
+      let endLoc = this.#curValEnd;
       (methodName = this.consumeIdOrKeyword("func name"));
       if (this.#cur === Token.doubleColon()) {
         this.consume();
@@ -10433,9 +10433,10 @@ class Parser extends sys.Obj {
       if (this.#cur !== Token.lparen()) {
         if ((this.#cur === Token.id() && this.#peek === Token.fnEq())) {
           args.add(this.lambda1());
+          endLoc = args.last().endLoc();
         }
         ;
-        return this.setStartEnd(this.toDotCall(methodName, args), target.startLoc(), args.isEmpty() ? endMethodName : args.last().endLoc())
+        return this.setStartEnd(this.toDotCall(methodName, args), target.startLoc(), endLoc)
       }
       ;
     }

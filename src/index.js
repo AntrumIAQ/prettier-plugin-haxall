@@ -269,6 +269,7 @@ function printAxon(path, options, print) {
       }
       return pb.group(docs)
     }
+
     default:
       throw new Error("Unknown axon type: " + JSON.stringify(node));
 
