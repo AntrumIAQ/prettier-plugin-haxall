@@ -71,8 +71,40 @@ function parseAxon(text, options, options2) {
   ast.comments = parser.comments()
   return ast
 }
-
+let pindex = 0
+function isBinaryExpr(expr) {
+  return expr._type.ordinal() >= axon.ExprType.assign().ordinal() && expr._type.ordinal() <= axon.ExprType.div().ordinal()
+}
 function printAxon(path, options, print) {
+
+  const parens = function (expr, docs, type) {
+    let lParen = "";
+    let lParenBreak = "";
+    let rParen = "";
+    let rParenBreak = "";
+    if (!expr._parens_restored && isBinaryExpr(expr) &&
+      (options.originalText[expr._start.filePos()] == '(' && options.originalText[expr._end.filePos()] == ')')
+    ) {
+      expr._parens_restored = true
+      ++pindex
+      lParen = "-" + type + String(pindex)
+      rParen = type + String(pindex) + "-"
+      // lParen = "("
+      // rParen = ")"
+
+      if (options.originalText[expr._start.filePos() + 1] == '\n') lParenBreak = pb.hardlineWithoutBreakParent
+
+      for (let index = expr._end.filePos() - 1; index >= 0; --index) {
+        let ch = options.originalText[index]
+        if (ch != ' ') {
+          if (ch == '\n') rParenBreak = pb.hardlineWithoutBreakParent
+          break
+        }
+      }
+    }
+    return Array.isArray(docs) ? [lParen, lParenBreak, ...docs, rParenBreak, rParen] : [lParen, lParenBreak, docs, rParenBreak, rParen]
+  }
+
   const node = path.getNode()
 
   switch (node._type) {
@@ -231,28 +263,15 @@ function printAxon(path, options, print) {
     case axon.ExprType.sub("-"):
     case axon.ExprType.mul("*"):
     case axon.ExprType.div("/"): {
-      let lParen = "";
-      let lParenBreak = "";
-      if (options.originalText[node.lhs._start.filePos()] == '(') {
-        lParen = "("
-        lParenBreak = options.originalText[node.lhs._start.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : ""
-      }
-
-      let rParen = "";
-      let rParenBreak = "";
-      if (options.originalText[node.rhs._end.filePos()] == ')') {
-        rParen = ")"
-        rParenBreak = options.originalText[node.rhs._end.filePos() - 1] == '\n' ? pb.hardlineWithoutBreakParent : ""
-      }
-
       let lOpBreak = options.originalText[node.lhs._end.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
       let rOpBreak = options.originalText[options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
-      return pb.group([lParen, lParenBreak,
-        path.call(print, "lhs"), lOpBreak, node._type.op(), rOpBreak, path.call(print, "rhs"),
-        rParenBreak, rParen
-      ])
+      let docs = [parens(node.lhs, path.call(print, "lhs"), "L"), lOpBreak, node._type.op(), rOpBreak, parens(node.rhs, path.call(print, "rhs"), "R")]
+      //let docs = [path.call(print, "lhs"), lOpBreak, node._type.op(), rOpBreak, path.call(print, "rhs")]
+      if (node._start.filePos() != node.lhs._start.filePos() && node._end.filePos() != node.rhs._end.filePos()) {
+        docs = parens(node, docs, "B")
+      }
+      return pb.group(docs)
     }
-
     default:
       throw new Error("Unknown axon type: " + JSON.stringify(node));
 
@@ -451,7 +470,7 @@ const parsers = {
     astFormat: 'axon-ast'
   }
 }
-const ignoredKeys = new Set(["_expr", "_type", "_start", "_end"]);
+const ignoredKeys = new Set(["_expr", "_type", "_start", "_end", "_parens_restored"]);
 
 
 function printComment(path, options) {
@@ -459,7 +478,7 @@ function printComment(path, options) {
   if (node._type == "commentSL") {
     let precedingSpaces = 0
     if (node.placement == "remaining") {
-      for (let index = node._start.filePos() - 1; index > 0; --index) {
+      for (let index = node._start.filePos() - 1; index >= 0; --index) {
         let ch = options.originalText[index]
         if (ch != ' ') break
         precedingSpaces++
