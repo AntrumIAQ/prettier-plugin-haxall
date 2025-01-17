@@ -71,10 +71,11 @@ function parseAxon(text, options, options2) {
   ast.comments = parser.comments()
   return ast
 }
-let pindex = 0
+
 function isBinaryExpr(expr) {
   return expr._type.ordinal() >= axon.ExprType.assign().ordinal() && expr._type.ordinal() <= axon.ExprType.div().ordinal()
 }
+
 function printAxon(path, options, print) {
 
   const parens = function (expr, docs, type) {
@@ -86,11 +87,8 @@ function printAxon(path, options, print) {
       (options.originalText[expr._start.filePos()] == '(' && options.originalText[expr._end.filePos()] == ')')
     ) {
       expr._parens_restored = true
-      ++pindex
-      lParen = "-" + type + String(pindex)
-      rParen = type + String(pindex) + "-"
-      // lParen = "("
-      // rParen = ")"
+      lParen = "("
+      rParen = ")"
 
       if (options.originalText[expr._start.filePos() + 1] == '\n') lParenBreak = pb.hardlineWithoutBreakParent
 
@@ -266,7 +264,6 @@ function printAxon(path, options, print) {
       let lOpBreak = options.originalText[node.lhs._end.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
       let rOpBreak = options.originalText[options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
       let docs = [parens(node.lhs, path.call(print, "lhs"), "L"), lOpBreak, node._type.op(), rOpBreak, parens(node.rhs, path.call(print, "rhs"), "R")]
-      //let docs = [path.call(print, "lhs"), lOpBreak, node._type.op(), rOpBreak, path.call(print, "rhs")]
       if (node._start.filePos() != node.lhs._start.filePos() && node._end.filePos() != node.rhs._end.filePos()) {
         docs = parens(node, docs, "B")
       }
