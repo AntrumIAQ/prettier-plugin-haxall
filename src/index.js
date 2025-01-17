@@ -230,11 +230,12 @@ function printAxon(path, options, print) {
         return ["throw ", path.call(print, 'expr')]
 
       case axon.ExprType.tryExpr(): {
-        const tryDoc = path.call(print, 'tryExpr')
+        let tryDoc = path.call(print, 'tryExpr')
         if (node.tryExpr._type == axon.ExprType.block()) {
           popEnd(tryDoc)
         }
-        const docs = ["try ", tryDoc, pb.line, "catch "]
+        else tryDoc = [tryDoc, " "]
+        const docs = ["try ", tryDoc, "catch "]
         if ("errVarName" in node) {
           docs.push("(" + node.errVarName.value + ") ")
         }
@@ -284,7 +285,7 @@ function printAxon(path, options, print) {
         const argDocs = path.map(print, 'args')
 
         let trailingLamdba = null
-        if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func() && node.args[node.args.length - 1].params.length == 1) {
+        if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
           trailingLamdba = argDocs.splice(-1, 1).pop()
         }
 
@@ -294,7 +295,7 @@ function printAxon(path, options, print) {
         else {
           let dotBreak = isDotCallLeaf ? pb.softline : pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: options.dotCallLeafGroupId })
           docs = docs.concat([dotBreak, ".", path.call(print, "func")])
-          if (argDocs.length > 0) {
+          if (argDocs.length > 0 || (trailingLamdba !== null && node.args[node.args.length - 1].params.length != 1)) {
             docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
           }
           if (trailingLamdba !== null) {
@@ -310,10 +311,11 @@ function printAxon(path, options, print) {
         let ifDoc = path.call(print, 'ifExpr')
         let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " "]
         if ("elseExpr" in node) {
-          docs = docs.concat([ifDoc, pb.line, "else ", path.call(print, "elseExpr")])
           if (node.ifExpr._type == axon.ExprType.block()) {
             popEnd(ifDoc)
           }
+          else ifDoc = [ifDoc, " "]
+          docs = docs.concat([ifDoc, "else ", path.call(print, "elseExpr")])
         }
         else docs.push(ifDoc)
         return pb.group(docs)
