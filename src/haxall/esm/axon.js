@@ -9606,9 +9606,9 @@ class Comment extends sys.Obj {
   constructor(value, start, end, type) {
     super();
     this.value = value
-    this.start = start
-    this.end = end
-    this.type = type
+    this._start = start
+    this._end = end
+    this._type = type
   }  
 }
 
@@ -10257,10 +10257,9 @@ class Parser extends sys.Obj {
   rangeExpr() {
     let expr = this.addExpr();
     if (this.#cur === Token.dotDot()) {
-      let startLoc = expr.startLoc()
       this.consume();
       (expr = RangeExpr.make(expr, this.addExpr()));
-      expr.startLoc(startLoc)
+      this.setStartEnd(expr, expr.start().startLoc(), expr.end().endLoc())
     }
     ;
     return expr;
@@ -10310,14 +10309,15 @@ class Parser extends sys.Obj {
 
   unaryExpr() {
     let startLoc = this.#curValStart
-    let endLoc = this.#curValEnd
     if (this.#cur === Token.minus()) {
       this.consume();
+      let endLoc = this.#curValEnd
       return this.setStartEnd(Neg.make(this.termExpr()).foldConst(),startLoc,endLoc);
     }
     ;
     if (this.#cur === Token.notKeyword()) {
       this.consume();
+      let endLoc = this.#curValEnd
       return this.setStartEnd(Not.make(this.termExpr()).foldConst(),startLoc,endLoc);
     }
     ;
