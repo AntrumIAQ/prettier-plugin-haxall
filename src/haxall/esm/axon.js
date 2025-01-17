@@ -10519,7 +10519,7 @@ class Parser extends sys.Obj {
   }
 
   dictGet(target) {
-    let startLoc = this.#curValStart
+    let startLoc = target.startLoc()
     this.consume(Token.arrow());
     let endLoc = this.#curValEnd
     let name = this.consumeId("dict tag name");
