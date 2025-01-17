@@ -72,262 +72,255 @@ function parseAxon(text, options, options2) {
   return ast
 }
 
-function isBinaryExpr(expr) {
-  return expr._type.ordinal() >= axon.ExprType.assign().ordinal() && expr._type.ordinal() <= axon.ExprType.div().ordinal()
-}
-
 function printAxon(path, options, print) {
 
-  const parens = function (expr, docs, type) {
-    let lParen = "";
+  const parens = function (expr, docs) {
+    if (expr === undefined || !expr._inParens) return docs
+
     let lParenBreak = "";
-    let rParen = "";
     let rParenBreak = "";
-    if (!expr._parens_restored && isBinaryExpr(expr) &&
-      (options.originalText[expr._start.filePos()] == '(' && options.originalText[expr._end.filePos()] == ')')
-    ) {
-      expr._parens_restored = true
-      lParen = "("
-      rParen = ")"
 
-      if (options.originalText[expr._start.filePos() + 1] == '\n') lParenBreak = pb.hardlineWithoutBreakParent
+    if (options.originalText[expr.startLoc().filePos() + 1] == '\n') lParenBreak = pb.hardlineWithoutBreakParent
 
-      for (let index = expr._end.filePos() - 1; index >= 0; --index) {
-        let ch = options.originalText[index]
-        if (ch != ' ') {
-          if (ch == '\n') rParenBreak = pb.hardlineWithoutBreakParent
-          break
-        }
+    for (let index = expr.endLoc().filePos() - 1; index >= 0; --index) {
+      let ch = options.originalText[index]
+      if (ch != ' ') {
+        if (ch == '\n') rParenBreak = pb.hardlineWithoutBreakParent
+        break
       }
     }
-    return Array.isArray(docs) ? [lParen, lParenBreak, ...docs, rParenBreak, rParen] : [lParen, lParenBreak, docs, rParenBreak, rParen]
+    if (!Array.isArray(docs)) docs = [docs]
+    return ["(", lParenBreak, ...docs, rParenBreak, ")"]
   }
 
   const node = path.getNode()
 
-  switch (node._type) {
+  let makeDocs = () => {
+    switch (node._type) {
 
-    case "array":
-      return path.map(print, 'value')
+      case "array":
+        return path.map(print, 'value')
 
-    case "literal":
-      return String(node.value)
+      case "literal":
+        return String(node.value)
 
-    case axon.ExprType.literal():
-      if (node._start !== null) {
-        return options.originalText.substring(node._start.filePos(), node._end.filePos() + 1)
-      }
-      return path.call(print, "val")
-
-    case axon.ExprType.list(): {
-      let trailingComma = false
-      if (node.vals.length > 0) {
-        let lastNode = node.vals[node.vals.length - 1]
-        trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
-      }
-      return pb.group(
-        [
-          '[',
-          pb.indent(
-            [
-              pb.softline,
-              pb.join([',', pb.line], path.map(print, 'vals'))
-            ]
-          ),
-          trailingComma ? ',' : '', pb.softline,
-          ']'
-        ], { shouldBreak: trailingComma }
-      )
-    }
-
-    case axon.ExprType.dict():
-      const keys = path.map(print, "names")
-      const values = path.map(print, "vals")
-      const longestKeyLength = Math.max(...(keys.map(k => k.length)));
-      const pairs = keys.map((k, i) => [k, values[i] == "marker" ? "" : [":", pb.ifBreak(" ".repeat(longestKeyLength - k.length + 1), " "), values[i]]]);
-
-      let trailingComma = false
-      if (node.vals.length > 0) {
-        let lastIndex = node.vals.length - 1
-        let isMarker = values[lastIndex] == "marker" || values[lastIndex] == "<marker>"
-        let lastNode = isMarker ? node.names[lastIndex] : node.vals[lastIndex]
-        trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
-      }
-
-      return pb.group(
-        [
-          '{',
-          pb.indent([
-            pb.softline,
-            pb.join([',', pb.line], pairs)
-          ]),
-          trailingComma ? ',' : '', pb.softline,
-          '}'
-        ], { shouldBreak: trailingComma }
-      )
-
-    case axon.ExprType.range():
-      return [path.call(print, 'start'), "..", path.call(print, 'end')]
-
-    case axon.ExprType.filter():
-      return ["parseFilter(", node.filter.toStr().toCode(), ")"]
-
-    case axon.ExprType.def():
-      return [node.name.value, ": ", path.call(print, 'val')]
-
-    case axon.ExprType.var():
-      return node.name.value
-
-    case axon.ExprType.func(): {
-      const needsParens = path.parent === null || path.parent.dict !== undefined || node.params.length != 1
-      let docs = []
-      if (needsParens) docs.push("(")
-      docs = docs.concat([pb.join(", ", path.map(print, 'params'))])
-      docs.push(needsParens ? ") " : " ")
-      docs = docs.concat(["=> ", path.call(print, 'body')])
-      return docs
-    }
-
-    case axon.ExprType.compdef(): {
-      const keys = node.cell_names
-      const values = path.map(print, "cell_values")
-      const longestKeyLength = Math.max(...(keys.map(k => k.length)));
-      const pairs = []
-      keys.each((k, i) => { pairs.push([k, ":", " ".repeat(longestKeyLength - k.length + 1), values[i]]) });
-
-      return ["defcomp", pb.indent([pb.hardline, pb.join(pb.hardline, pairs), pb.hardline, path.call(print, 'body')]), pb.hardline, "end"]
-    }
-
-    case axon.ExprType.celldef(): {
-      let str = node.toStr().replace("is:", "is:^")
-      return str.substring(str.indexOf(':') + 1).trim()
-    }
-
-    case axon.ExprType.call(): {
-      let isDotCallLeaf = path.parent._type != axon.ExprType.dotCall()
-      const argDocs = path.map(print, 'args')
-      let trailingLamdba = null
-      if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
-        trailingLamdba = argDocs.splice(-1, 1).pop()
-      }
-      let docs = [path.call(print, "func"), "(", pb.join(", ", argDocs), ")"]
-      if (trailingLamdba !== null) {
-        docs = docs.concat([" ", trailingLamdba])
-      }
-      return pb.group(docs)
-    }
-
-    case axon.ExprType.partialCall():
-      return [path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"]
-
-    case axon.ExprType.staticCall():
-      return [path.call(print, "typeRef"), ".", path.call(print, "funcName"), "(", pb.join(", ", path.map(print, 'args')), ")"]
-
-    case axon.ExprType.trapCall():
-      return [path.call(print, "lhs"), "->", node.rhs.val.value]
-
-    case axon.ExprType.block(): {
-      return ["do", pb.indent(
-        [pb.hardlineWithoutBreakParent, pb.join(pb.hardlineWithoutBreakParent, path.map(print, 'exprs'))]
-      ), pb.hardlineWithoutBreakParent, "end"]
-    }
-
-    case axon.ExprType.returnExpr():
-      return ["return ", path.call(print, 'expr')]
-
-    case axon.ExprType.throwExpr():
-      return ["throw ", path.call(print, 'expr')]
-
-    case axon.ExprType.tryExpr(): {
-      const tryDoc = path.call(print, 'tryExpr')
-      if (node.tryExpr._type == axon.ExprType.block()) {
-        popEnd(tryDoc)
-      }
-      const docs = ["try ", tryDoc, pb.line, "catch "]
-      if ("errVarName" in node) {
-        docs.push("(" + node.errVarName.value + ") ")
-      }
-      docs.push(path.call(print, 'catchExpr'))
-      return pb.group(docs)
-    }
-
-    case axon.ExprType.typeRef():
-      return "paxon::typeRef"
-
-    case axon.ExprType.not("not"):
-      return [node._type.op(), " ", path.call(print, "operand")]
-
-    case axon.ExprType.neg("-"):
-      return [node._type.op(), path.call(print, "operand")]
-
-    case axon.ExprType.and("and"):
-    case axon.ExprType.or("or"):
-    case axon.ExprType.assign("="):
-    case axon.ExprType.eq("=="):
-    case axon.ExprType.ne("!="):
-    case axon.ExprType.lt("<"):
-    case axon.ExprType.le("<="):
-    case axon.ExprType.ge(">="):
-    case axon.ExprType.gt(">"):
-    case axon.ExprType.cmp("<=>"):
-    case axon.ExprType.add("+"):
-    case axon.ExprType.sub("-"):
-    case axon.ExprType.mul("*"):
-    case axon.ExprType.div("/"): {
-      let lOpBreak = options.originalText[node.lhs._end.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
-      let rOpBreak = options.originalText[options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
-      let docs = [parens(node.lhs, path.call(print, "lhs")), lOpBreak, node._type.op(), rOpBreak, parens(node.rhs, path.call(print, "rhs"))]
-      if (node._start.filePos() != node.lhs._start.filePos() && node._end.filePos() != node.rhs._end.filePos()) {
-        docs = parens(node, docs)
-      }
-      return pb.group(docs)
-    }
-
-    default:
-      throw new Error("Unknown axon type: " + JSON.stringify(node));
-
-    case axon.ExprType.dotCall(): {
-      let isDotCallLeaf = path.parent._type != axon.ExprType.dotCall()
-      if (isDotCallLeaf) options.dotCallLeafGroupId = node._start.filePos()
-      let docs = [path.call(print, "lhs")]
-      const argDocs = path.map(print, 'args')
-
-      let trailingLamdba = null
-      if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func() && node.args[node.args.length - 1].params.length == 1) {
-        trailingLamdba = argDocs.splice(-1, 1).pop()
-      }
-
-      if (node.func.name.value == "get" && argDocs.length == 1 && trailingLamdba === null) {
-        docs = docs.concat(["[", argDocs[0], "]"])
-      }
-      else {
-        let dotBreak = isDotCallLeaf ? pb.softline : pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: options.dotCallLeafGroupId })
-        docs = docs.concat([dotBreak, ".", path.call(print, "func")])
-        if (argDocs.length > 0) {
-          docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
+      case axon.ExprType.literal():
+        if (node._start !== null) {
+          return options.originalText.substring(node._start.filePos(), node._end.filePos() + 1)
         }
+        return path.call(print, "val")
+
+      case axon.ExprType.list(): {
+        let trailingComma = false
+        if (node.vals.length > 0) {
+          let lastNode = node.vals[node.vals.length - 1]
+          trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
+        }
+        return pb.group(
+          [
+            '[',
+            pb.indent(
+              [
+                pb.softline,
+                pb.join([',', pb.line], path.map(print, 'vals'))
+              ]
+            ),
+            trailingComma ? ',' : '', pb.softline,
+            ']'
+          ], { shouldBreak: trailingComma }
+        )
+      }
+
+      case axon.ExprType.dict():
+        const keys = path.map(print, "names")
+        const values = path.map(print, "vals")
+        const longestKeyLength = Math.max(...(keys.map(k => k.length)));
+        const pairs = keys.map((k, i) => [k, values[i] == "marker" ? "" : [":", pb.ifBreak(" ".repeat(longestKeyLength - k.length + 1), " "), values[i]]]);
+
+        let trailingComma = false
+        if (node.vals.length > 0) {
+          let lastIndex = node.vals.length - 1
+          let isMarker = values[lastIndex] == "marker" || values[lastIndex] == "<marker>"
+          let lastNode = isMarker ? node.names[lastIndex] : node.vals[lastIndex]
+          trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
+        }
+
+        return pb.group(
+          [
+            '{',
+            pb.indent([
+              pb.softline,
+              pb.join([',', pb.line], pairs)
+            ]),
+            trailingComma ? ',' : '', pb.softline,
+            '}'
+          ], { shouldBreak: trailingComma }
+        )
+
+      case axon.ExprType.range():
+        return [path.call(print, 'start'), "..", path.call(print, 'end')]
+
+      case axon.ExprType.filter():
+        return ["parseFilter(", node.filter.toStr().toCode(), ")"]
+
+      case axon.ExprType.def():
+        return [node.name.value, ": ", path.call(print, 'val')]
+
+      case axon.ExprType.var():
+        return node.name.value
+
+      case axon.ExprType.func(): {
+        const needsParens = path.parent === null || path.parent.dict !== undefined || node.params.length != 1
+        let docs = []
+        if (needsParens) docs.push("(")
+        docs = docs.concat([pb.join(", ", path.map(print, 'params'))])
+        docs.push(needsParens ? ") " : " ")
+        docs = docs.concat(["=> ", path.call(print, 'body')])
+        return docs
+      }
+
+      case axon.ExprType.compdef(): {
+        const keys = node.cell_names
+        const values = path.map(print, "cell_values")
+        const longestKeyLength = Math.max(...(keys.map(k => k.length)));
+        const pairs = []
+        keys.each((k, i) => { pairs.push([k, ":", " ".repeat(longestKeyLength - k.length + 1), values[i]]) });
+
+        return ["defcomp", pb.indent([pb.hardline, pb.join(pb.hardline, pairs), pb.hardline, path.call(print, 'body')]), pb.hardline, "end"]
+      }
+
+      case axon.ExprType.celldef(): {
+        let str = node.toStr().replace("is:", "is:^")
+        return str.substring(str.indexOf(':') + 1).trim()
+      }
+
+      case axon.ExprType.call(): {
+        let isDotCallLeaf = path.parent._type != axon.ExprType.dotCall()
+        const argDocs = path.map(print, 'args')
+        let trailingLamdba = null
+        if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
+          trailingLamdba = argDocs.splice(-1, 1).pop()
+        }
+        let docs = [path.call(print, "func"), "(", pb.join(", ", argDocs), ")"]
         if (trailingLamdba !== null) {
           docs = docs.concat([" ", trailingLamdba])
         }
+        return pb.group(docs)
       }
-      if (isDotCallLeaf) docs = pb.indent(docs)
-      docs = pb.group(docs, { id: isDotCallLeaf ? node._start.filePos() : null })
-      return docs
-    }
 
-    case axon.ExprType.ifExpr(): {
-      let ifDoc = path.call(print, 'ifExpr')
-      let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " "]
-      if ("elseExpr" in node) {
-        docs = docs.concat([ifDoc, pb.line, "else ", path.call(print, "elseExpr")])
-        if (node.ifExpr._type == axon.ExprType.block()) {
-          popEnd(ifDoc)
-        }
+      case axon.ExprType.partialCall():
+        return [path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"]
+
+      case axon.ExprType.staticCall():
+        return [path.call(print, "typeRef"), ".", path.call(print, "funcName"), "(", pb.join(", ", path.map(print, 'args')), ")"]
+
+      case axon.ExprType.trapCall():
+        return [path.call(print, "lhs"), "->", node.rhs.val.value]
+
+      case axon.ExprType.block(): {
+        return ["do", pb.indent(
+          [pb.hardlineWithoutBreakParent, pb.join(pb.hardlineWithoutBreakParent, path.map(print, 'exprs'))]
+        ), pb.hardlineWithoutBreakParent, "end"]
       }
-      else docs.push(ifDoc)
-      return pb.group(docs)
+
+      case axon.ExprType.returnExpr():
+        return ["return ", path.call(print, 'expr')]
+
+      case axon.ExprType.throwExpr():
+        return ["throw ", path.call(print, 'expr')]
+
+      case axon.ExprType.tryExpr(): {
+        const tryDoc = path.call(print, 'tryExpr')
+        if (node.tryExpr._type == axon.ExprType.block()) {
+          popEnd(tryDoc)
+        }
+        const docs = ["try ", tryDoc, pb.line, "catch "]
+        if ("errVarName" in node) {
+          docs.push("(" + node.errVarName.value + ") ")
+        }
+        docs.push(path.call(print, 'catchExpr'))
+        return pb.group(docs)
+      }
+
+      case axon.ExprType.typeRef():
+        return "paxon::typeRef"
+
+      case axon.ExprType.not("not"):
+        return [node._type.op(), " ", path.call(print, "operand")]
+
+      case axon.ExprType.neg("-"):
+        return [node._type.op(), path.call(print, "operand")]
+
+      case axon.ExprType.and("and"):
+      case axon.ExprType.or("or"):
+      case axon.ExprType.assign("="):
+      case axon.ExprType.eq("=="):
+      case axon.ExprType.ne("!="):
+      case axon.ExprType.lt("<"):
+      case axon.ExprType.le("<="):
+      case axon.ExprType.ge(">="):
+      case axon.ExprType.gt(">"):
+      case axon.ExprType.cmp("<=>"):
+      case axon.ExprType.add("+"):
+      case axon.ExprType.sub("-"):
+      case axon.ExprType.mul("*"):
+      case axon.ExprType.div("/"): {
+        let lOpBreak = options.originalText[node.lhs._end.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
+        let rOpBreak = options.originalText[options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
+        let docs = [path.call(print, "lhs"), lOpBreak, node._type.op(), rOpBreak, path.call(print, "rhs")]
+        if (node._start.filePos() != node.lhs._start.filePos() && node._end.filePos() != node.rhs._end.filePos()) {
+          docs = parens(node, docs)
+        }
+        return pb.group(docs)
+      }
+
+      default:
+        throw new Error("Unknown axon type: " + JSON.stringify(node));
+
+      case axon.ExprType.dotCall(): {
+        let isDotCallLeaf = path.parent._type != axon.ExprType.dotCall()
+        if (isDotCallLeaf) options.dotCallLeafGroupId = node._start.filePos()
+        let docs = [path.call(print, "lhs")]
+        const argDocs = path.map(print, 'args')
+
+        let trailingLamdba = null
+        if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func() && node.args[node.args.length - 1].params.length == 1) {
+          trailingLamdba = argDocs.splice(-1, 1).pop()
+        }
+
+        if (node.func.name.value == "get" && argDocs.length == 1 && trailingLamdba === null) {
+          docs = docs.concat(["[", argDocs[0], "]"])
+        }
+        else {
+          let dotBreak = isDotCallLeaf ? pb.softline : pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: options.dotCallLeafGroupId })
+          docs = docs.concat([dotBreak, ".", path.call(print, "func")])
+          if (argDocs.length > 0) {
+            docs = docs.concat(["(", pb.join(", ", argDocs), ")"])
+          }
+          if (trailingLamdba !== null) {
+            docs = docs.concat([" ", trailingLamdba])
+          }
+        }
+        if (isDotCallLeaf) docs = pb.indent(docs)
+        docs = pb.group(docs, { id: isDotCallLeaf ? node._start.filePos() : null })
+        return docs
+      }
+
+      case axon.ExprType.ifExpr(): {
+        let ifDoc = path.call(print, 'ifExpr')
+        let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " "]
+        if ("elseExpr" in node) {
+          docs = docs.concat([ifDoc, pb.line, "else ", path.call(print, "elseExpr")])
+          if (node.ifExpr._type == axon.ExprType.block()) {
+            popEnd(ifDoc)
+          }
+        }
+        else docs.push(ifDoc)
+        return pb.group(docs)
+      }
     }
   }
+  return parens(node._expr, makeDocs())
 }
 
 function popEnd(docs) {
@@ -481,7 +474,7 @@ const parsers = {
     astFormat: 'axon-ast'
   }
 }
-const ignoredKeys = new Set(["_expr", "_type", "_start", "_end", "_parens_restored"]);
+const ignoredKeys = new Set(["_expr", "_type", "_start", "_end", "_inParens"]);
 
 
 function printComment(path, options) {

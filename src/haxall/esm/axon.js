@@ -10576,6 +10576,7 @@ class Parser extends sys.Obj {
     let expr = this.expr();
     this.setStartEnd(expr, startLoc, this.#curValEnd)
     this.consume(Token.rparen());
+    expr._inParens = true
     return expr;
   }
 
