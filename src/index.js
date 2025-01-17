@@ -219,8 +219,6 @@ function printAxon(path, options, print) {
 
     case axon.ExprType.and("and"):
     case axon.ExprType.or("or"):
-      return pb.group([path.call(print, "lhs"), " ", node._type.op(), pb.line, path.call(print, "rhs")])
-
     case axon.ExprType.assign("="):
     case axon.ExprType.eq("=="):
     case axon.ExprType.ne("!="):
@@ -232,8 +230,28 @@ function printAxon(path, options, print) {
     case axon.ExprType.add("+"):
     case axon.ExprType.sub("-"):
     case axon.ExprType.mul("*"):
-    case axon.ExprType.div("/"):
-      return [path.call(print, "lhs"), " ", node._type.op(), " ", path.call(print, "rhs")]
+    case axon.ExprType.div("/"): {
+      let lParen = "";
+      let lParenBreak = "";
+      if (options.originalText[node.lhs._start.filePos()] == '(') {
+        lParen = "("
+        lParenBreak = options.originalText[node.lhs._start.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : ""
+      }
+
+      let rParen = "";
+      let rParenBreak = "";
+      if (options.originalText[node.rhs._end.filePos()] == ')') {
+        rParen = ")"
+        rParenBreak = options.originalText[node.rhs._end.filePos() - 1] == '\n' ? pb.hardlineWithoutBreakParent : ""
+      }
+
+      let lOpBreak = options.originalText[node.lhs._end.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
+      let rOpBreak = options.originalText[options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
+      return pb.group([lParen, lParenBreak,
+        path.call(print, "lhs"), lOpBreak, node._type.op(), rOpBreak, path.call(print, "rhs"),
+        rParenBreak, rParen
+      ])
+    }
 
     default:
       throw new Error("Unknown axon type: " + JSON.stringify(node));
