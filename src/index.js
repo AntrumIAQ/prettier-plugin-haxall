@@ -203,7 +203,20 @@ function printAxon(path, options, print) {
       return str.substring(str.indexOf(':') + 1).trim()
     }
 
-    case axon.ExprType.call():
+    case axon.ExprType.call(): {
+      let isDotCallLeaf = path.parent._type != axon.ExprType.dotCall()
+      const argDocs = path.map(print, 'args')
+      let trailingLamdba = null
+      if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
+        trailingLamdba = argDocs.splice(-1, 1).pop()
+      }
+      let docs = [path.call(print, "func"), "(", pb.join(", ", argDocs), ")"]
+      if (trailingLamdba !== null) {
+        docs = docs.concat([" ", trailingLamdba])
+      }
+      return pb.group(docs)
+    }
+
     case axon.ExprType.partialCall():
       return [path.call(print, "func"), "(", pb.join(", ", path.map(print, 'args')), ")"]
 
