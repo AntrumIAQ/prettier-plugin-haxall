@@ -10415,9 +10415,13 @@ class Parser extends sys.Obj {
   call(target,isMethod) {
     let args = ((this$) => { if (isMethod) return sys.List.make(Expr.type$.toNullable(), [target]); return sys.List.make(Expr.type$.toNullable()); })(this);
     let methodName = "?";
+    let methodNameStart = null;
+    let methodNameEnd = null;
     if (isMethod) {
       this.consume(Token.dot());
-      let endLoc = this.#curValEnd;
+      methodNameStart = this.#curValStart;
+      methodNameEnd = this.#curValEnd;
+      let endLoc = methodNameEnd;
       (methodName = this.consumeIdOrKeyword("func name"));
       if (this.#cur === Token.doubleColon()) {
         this.consume();
@@ -10436,7 +10440,9 @@ class Parser extends sys.Obj {
           endLoc = args.last().endLoc();
         }
         ;
-        return this.setStartEnd(this.toDotCall(methodName, args), target.startLoc(), endLoc)
+        let dotCall = this.toDotCall(methodName, args)
+        this.setStartEnd(dotCall.func(),methodNameStart,methodNameEnd)
+        return this.setStartEnd(dotCall, target.startLoc(), endLoc)
       }
       ;
     }
@@ -10474,7 +10480,12 @@ class Parser extends sys.Obj {
       callEndLoc = args.last().endLoc()
     }
     ;
-    let call = ((this$) => { if (isMethod) return this$.toDotCall(methodName, args); return this$.toCall(target, args); })(this);
+    let call = ((this$) => { if (isMethod){
+      let dotCall = this$.toDotCall(methodName, args)
+      this.setStartEnd(dotCall.func(),methodNameStart,methodNameEnd)
+      return dotCall
+
+    }; return this$.toCall(target, args); })(this);
     if (sys.ObjUtil.compareGT(numPartials, 0)) {
       const parCall = PartialCall.make(call.func(), call.args(), numPartials);
       this.setStartEnd(parCall,target.startLoc(),callEndLoc)
