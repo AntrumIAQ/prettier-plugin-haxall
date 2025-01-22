@@ -44,7 +44,8 @@ class AxonTree {
     if (this._type == axon.ExprType.dotCall()) {
       this.lhs = this.args.splice(0, 1)[0]
       this._args_need_parens = false
-      this._break_if_group = this._end.filePos()
+      this._group_id = this.lhs._end.filePos()
+      this._break_if_group = this._group_id
     }
     else if (this._type == axon.ExprType.trapCall()) {
       this.lhs = this.args[0]
@@ -132,6 +133,8 @@ function printAxon(path, options, print) {
           let lastNode = node.vals[node.vals.length - 1]
           trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
         }
+
+        node._group_id = node._start.filePos()
         return pb.group(
           [
             '[',
@@ -143,7 +146,7 @@ function printAxon(path, options, print) {
             ),
             trailingComma ? ',' : '', pb.softline,
             ']'
-          ], { shouldBreak: trailingComma, id: node._end.filePos() }
+          ], { shouldBreak: trailingComma, id: node._group_id }
         )
       }
 
@@ -161,6 +164,7 @@ function printAxon(path, options, print) {
           trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
         }
 
+        node._group_id = node._start.filePos()
         return pb.group(
           [
             '{',
@@ -170,7 +174,7 @@ function printAxon(path, options, print) {
             ]),
             trailingComma ? ',' : '', pb.softline,
             '}'
-          ], { shouldBreak: trailingComma, id: node._end.filePos() }
+          ], { shouldBreak: trailingComma, id: node._group_id }
         )
 
       case axon.ExprType.range():
@@ -293,14 +297,24 @@ function printAxon(path, options, print) {
         throw new Error("Unknown axon type: " + JSON.stringify(node));
 
       case axon.ExprType.dotCall(): {
-        let dotBreak = node._break_if_group === undefined ? pb.softline : pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: node._break_if_group })
+        let dotBreak = ""
+        let dotBreakGroup = 0
 
         if (node.lhs._type == axon.ExprType.dotCall()) {
           node.lhs._args_need_parens = true
-          node.lhs._break_if_group = node._break_if_group === undefined ? node._end.filePos() : node._break_if_group
+          node.lhs._break_if_group = node._break_if_group
+          dotBreak = pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: node._break_if_group })
+          dotBreakGroup = dotBreak.groupId
         }
-        else if (node.lhs._type == axon.ExprType.dict() || node.lhs._type == axon.ExprType.list()) {
-          dotBreak = pb.ifBreak("", dotBreak, { groupId: node.lhs._end.filePos() })
+        else {
+          if (path.parent !== null && path.parent._type === axon.ExprType.dotCall()) {
+            dotBreak = pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: node._break_if_group })
+            dotBreakGroup = dotBreak.groupId
+          }
+          if (node.lhs._type == axon.ExprType.dict() || node.lhs._type == axon.ExprType.list()) {
+            dotBreak = pb.ifBreak("", dotBreak, { groupId: node.lhs._group_id })
+            dotBreakGroup = dotBreak.groupId
+          }
         }
 
         let docs = [path.call(print, "lhs")]
@@ -323,20 +337,18 @@ function printAxon(path, options, print) {
             dotAndRhsDocs = dotAndRhsDocs.concat([" ", trailingLamdba])
           }
 
-          dotAndRhsDocs = pb.indentIfBreak(dotAndRhsDocs, { groupId: node._break_if_group })
+          if (dotBreak != "") dotAndRhsDocs = pb.indentIfBreak(dotAndRhsDocs, { groupId: dotBreakGroup })
           docs = docs.concat(dotAndRhsDocs)
         }
 
-        docs = pb.group(docs, { id: node._end.filePos() })
+        docs = pb.group(docs, { id: node._group_id })
         return docs
       }
 
       case axon.ExprType.ifExpr(): {
-        let condDocs = path.call(print, 'cond')
-        let condWillBreak = willBreak(condDocs)
-        let docs = ["if ", pb.group(["(", pb.indent([condWillBreak ? pb.hardlineWithoutBreakParent : "", condDocs]), condWillBreak ? pb.hardlineWithoutBreakParent : "", ")"]), " "]
-        //let docs = ["if ", pb.group(["(", pb.indent([pb.hardlineWithoutBreakParent, condDocs]), pb.ifBreak(pb.hardlineWithoutBreakParent, "", { groupId: condDocs.id }), ")"]), " "]
-        //let docs = ["if ", pb.group(["(", pb.indent([pb.softline, condDocs]), pb.softline, ")"]), " "]
+        const lParenBreak = newlinePrior(node.cond._start.filePos()) ? pb.hardlineWithoutBreakParent : ""
+        const rParenBreak = newlineAfter(node.cond._end.filePos()) ? pb.hardlineWithoutBreakParent : ""
+        let docs = ["if ", pb.group(["(", pb.indent([lParenBreak, path.call(print, 'cond')]), rParenBreak, ")"]), " "]
 
         let ifExprInBlock = node.ifExpr._type == axon.ExprType.block()
         let ifDoc = path.call(print, 'ifExpr')
@@ -571,7 +583,7 @@ const parsers = {
     astFormat: 'axon-ast'
   }
 }
-const ignoredKeys = new Set(["_expr", "_type", "_start", "_end", "_inParens", "_args_need_parens", "_break_if_group"]);
+const ignoredKeys = new Set(["_expr", "_type", "_start", "_end", "_inParens", "_args_need_parens", "_break_if_group", "_group_id"]);
 
 
 function printComment(path, options) {
