@@ -1959,6 +1959,7 @@ class UnaryOp extends Expr {
   static make$($self,operand) {
     Expr.make$($self);
     $self.#operand = operand;
+    $self.endLoc(operand.endLoc())
     return;
   }
 
@@ -10311,14 +10312,14 @@ class Parser extends sys.Obj {
     let startLoc = this.#curValStart
     if (this.#cur === Token.minus()) {
       this.consume();
-      let endLoc = this.#curValEnd
-      return this.setStartEnd(Neg.make(this.termExpr()).foldConst(),startLoc,endLoc);
+      let term = this.termExpr();
+      return this.setStartEnd( Neg.make(term).foldConst(), startLoc, term.endLoc())
     }
     ;
     if (this.#cur === Token.notKeyword()) {
       this.consume();
-      let endLoc = this.#curValEnd
-      return this.setStartEnd(Not.make(this.termExpr()).foldConst(),startLoc,endLoc);
+      let term = this.termExpr();
+      return this.setStartEnd( Not.make(term).foldConst(), startLoc, term.endLoc())
     }
     ;
     return this.termExpr();

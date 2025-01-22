@@ -4,7 +4,9 @@ import * as axon from './haxall/esm/axon.js'
 import * as concurrent from './haxall/esm/concurrent.js'
 import * as haystack from './haxall/esm/haystack.js'
 import { builders } from "prettier/doc"
+import { utils } from "prettier/doc"
 const pb = builders;
+const pu = utils;
 
 concurrent.Actor.locals().set(haystack.Etc.cxActorLocalsKey(), new axon.AxonContext());
 
@@ -87,13 +89,24 @@ function printAxon(path, options, print) {
     return false
   }
 
+  const newlineAfter = function (filePos) {
+    for (let index = filePos + 1; index < options.originalText.length; ++index) {
+      let ch = options.originalText[index]
+      if (ch != ' ') {
+        if (ch == '\n') return true
+        break
+      }
+    }
+    return false
+  }
+
   const parens = function (expr, docs) {
     if (expr === undefined || !expr._inParens) return docs
 
     let lParenBreak = "";
     let rParenBreak = "";
 
-    if (options.originalText[expr.startLoc().filePos() + 1] == '\n') lParenBreak = pb.hardlineWithoutBreakParent
+    if (newlineAfter(expr.startLoc().filePos())) lParenBreak = pb.hardlineWithoutBreakParent
     if (newlinePrior(expr.endLoc().filePos())) rParenBreak = pb.hardlineWithoutBreakParent
     if (!Array.isArray(docs)) docs = [docs]
     return ["(", lParenBreak, ...docs, rParenBreak, ")"]
@@ -235,7 +248,7 @@ function printAxon(path, options, print) {
         if (node.tryExpr._type == axon.ExprType.block()) {
           popEnd(tryDoc)
         }
-        else tryDoc = [tryDoc, " "]
+        else tryDoc = [tryDoc, newlineAfter(node.tryExpr._end.filePos()) ? pb.hardlineWithoutBreakParent : " "]
         const docs = ["try ", tryDoc, "catch "]
         if ("errVarName" in node) {
           docs.push("(" + node.errVarName.value + ") ")
@@ -267,8 +280,8 @@ function printAxon(path, options, print) {
       case axon.ExprType.sub("-"):
       case axon.ExprType.mul("*"):
       case axon.ExprType.div("/"): {
-        let lOpBreak = options.originalText[node.lhs._end.filePos() + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
-        let rOpBreak = options.originalText[options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + 1] == '\n' ? pb.hardlineWithoutBreakParent : " "
+        let lOpBreak = newlineAfter(node.lhs._end.filePos()) ? pb.hardlineWithoutBreakParent : " "
+        let rOpBreak = newlineAfter(options.originalText.indexOf(node._type.op(), node.lhs._end.filePos() + 1) + node._type.op().length - 1) ? pb.hardlineWithoutBreakParent : " "
         let docs = [path.call(print, "lhs"), lOpBreak, node._type.op(), rOpBreak, path.call(print, "rhs")]
         if (node._start.filePos() != node.lhs._start.filePos() && node._end.filePos() != node.rhs._end.filePos()) {
           docs = parens(node, docs)
@@ -319,7 +332,11 @@ function printAxon(path, options, print) {
       }
 
       case axon.ExprType.ifExpr(): {
-        let docs = ["if ", pb.group(["(", pb.indent([pb.softline, path.call(print, 'cond')]), pb.softline, ")"]), " "]
+        let condDocs = path.call(print, 'cond')
+        let condWillBreak = willBreak(condDocs)
+        let docs = ["if ", pb.group(["(", pb.indent([condWillBreak ? pb.hardlineWithoutBreakParent : "", condDocs]), condWillBreak ? pb.hardlineWithoutBreakParent : "", ")"]), " "]
+        //let docs = ["if ", pb.group(["(", pb.indent([pb.hardlineWithoutBreakParent, condDocs]), pb.ifBreak(pb.hardlineWithoutBreakParent, "", { groupId: condDocs.id }), ")"]), " "]
+        //let docs = ["if ", pb.group(["(", pb.indent([pb.softline, condDocs]), pb.softline, ")"]), " "]
 
         let ifExprInBlock = node.ifExpr._type == axon.ExprType.block()
         let ifDoc = path.call(print, 'ifExpr')
@@ -332,7 +349,7 @@ function printAxon(path, options, print) {
           if (ifExprInBlock) {
             popEnd(ifDoc)
           }
-          else ifDoc = [ifDoc, " "]
+          else ifDoc = [ifDoc, newlineAfter(node.ifExpr._end.filePos()) ? pb.hardlineWithoutBreakParent : " "]
 
           let elseDoc = path.call(print, "elseExpr")
           if (newlinePrior(node.elseExpr._start.filePos())) elseDoc = doWrap(elseDoc)
@@ -380,6 +397,41 @@ function argsGroup(args, groupId) {
     )
   }
   return pb.group(['(', pb.join([',', pb.line], args), ')'], { id: groupId })
+}
+
+
+function findInDoc(doc, fn, defaultValue) {
+  let result = defaultValue;
+  let shouldSkipFurtherProcessing = false;
+  function findInDocOnEnterFn(doc2) {
+    if (doc2.type === "if-break") {
+      return false
+    }
+    if (shouldSkipFurtherProcessing) {
+      return false;
+    }
+    const maybeResult = fn(doc2);
+    if (maybeResult !== void 0) {
+      shouldSkipFurtherProcessing = true;
+      result = maybeResult;
+    }
+  }
+  pu.traverseDoc(doc, findInDocOnEnterFn);
+  return result;
+}
+function willBreakFn(doc) {
+  if (doc.type === "group" && doc.break) {
+    return true;
+  }
+  if (doc.type === "line" && doc.hard) {
+    return true;
+  }
+  if (doc.type === "break-parent") {
+    return true;
+  }
+}
+function willBreak(doc) {
+  return findInDoc(doc, willBreakFn, false);
 }
 
 class TrioSrc {

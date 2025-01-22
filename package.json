@@ -25,7 +25,7 @@
   },
   "scripts": {
     "axon": "prettier --plugin ./src/index.js --print-width 120 example.axon",
-    "trio": "prettier --plugin ./src/index.js --print-width 120 example.trio",
+    "trio": "prettier --plugin ./src/index.js --print-width 120 /home/rmulder/devel/AntrumEyeSkysparkExtension/lib/funcs/funcs.trio",
     "test": "jest"
   }
 }
