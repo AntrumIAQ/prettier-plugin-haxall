@@ -135,22 +135,25 @@ function printAxon(path, options, print) {
         }
 
         node._group_id = node._start.filePos()
-        return pb.group(
-          [
-            '[',
-            pb.indent(
-              [
-                pb.softline,
-                pb.join([',', pb.line], path.map(print, 'vals'))
-              ]
-            ),
-            trailingComma ? ',' : '', pb.softline,
-            ']'
-          ], { shouldBreak: trailingComma, id: node._group_id }
-        )
+        if (node.vals.length > 1 || trailingComma) {
+          return pb.group(
+            [
+              '[',
+              pb.indent(
+                [
+                  pb.softline,
+                  pb.join([',', pb.line], path.map(print, 'vals'))
+                ]
+              ),
+              trailingComma ? ',' : '', pb.softline,
+              ']'
+            ], { shouldBreak: trailingComma, id: node._group_id }
+          )
+        }
+        return pb.group(['[', path.map(print, 'vals'), ']'], { id: node._group_id })
       }
 
-      case axon.ExprType.dict():
+      case axon.ExprType.dict(): {
         const keys = path.map(print, "names")
         const values = path.map(print, "vals")
         const longestKeyLength = Math.max(...(keys.map(k => k.length)));
@@ -165,17 +168,21 @@ function printAxon(path, options, print) {
         }
 
         node._group_id = node._start.filePos()
-        return pb.group(
-          [
-            '{',
-            pb.indent([
-              pb.softline,
-              pb.join([',', pb.line], pairs)
-            ]),
-            trailingComma ? ',' : '', pb.softline,
-            '}'
-          ], { shouldBreak: trailingComma, id: node._group_id }
-        )
+        if (node.vals.length > 1 || trailingComma) {
+          return pb.group(
+            [
+              '{',
+              pb.indent([
+                pb.softline,
+                pb.join([',', pb.line], pairs)
+              ]),
+              trailingComma ? ',' : '', pb.softline,
+              '}'
+            ], { shouldBreak: trailingComma, id: node._group_id }
+          )
+        }
+        return pb.group(['{', pairs, '}'], { id: node._group_id })
+      }
 
       case axon.ExprType.range():
         return [path.call(print, 'start'), "..", path.call(print, 'end')]
