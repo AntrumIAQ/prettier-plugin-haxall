@@ -1,6 +1,6 @@
 {
   "name": "prettier-plugin-haxall",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "",
   "main": "./dist/index.js",
   "type": "module",
@@ -15,7 +15,7 @@
   ],
   "dependencies": {
     "prettier": "^3.4",
-    "@haxall/haxall": "*"
+    "@haxall/haxall": "3.1.11"
   },
   "devDependencies": {
     "@types/node": "*",
@@ -25,7 +25,7 @@
   },
   "scripts": {
     "axon": "prettier --plugin ./src/index.js --print-width 120 example.axon",
-    "trio": "prettier --plugin ./src/index.js --print-width 120 /home/rmulder/devel/AntrumEyeSkysparkExtension/lib/funcs/funcs.trio",
+    "trio": "prettier --plugin ./src/index.js --print-width 120 example.trio",
     "test": "jest"
   }
 }
