@@ -335,7 +335,7 @@ function printAxon(path, options, print) {
         let dotBreak = ""
         let dotBreakGroup = 0
 
-        if (node.lhs._type == axon.ExprType.dotCall()) {
+        if (node.lhs._type == axon.ExprType.dotCall() && node.lhs.func.name.value != "get") {
           node.lhs._args_need_parens = true
           node.lhs._break_if_group = node._break_if_group
           dotBreak = pb.ifBreak(pb.hardlineWithoutBreakParent, pb.softline, { groupId: node._break_if_group })
@@ -386,13 +386,13 @@ function printAxon(path, options, print) {
         let docs = ["if ", pb.group(["(", pb.indent([lParenBreak, path.call(print, 'cond')]), rParenBreak, ")"]), " "]
 
         let ifExprInBlock = node.ifExpr._type == axon.ExprType.block()
-        let lastExprInIf_is_IfWithoutElse = ifExprInBlock && isIfWithoutElse(node.ifExpr.exprs[node.ifExpr.exprs.length - 1])
+        let lastExprInIf_is_IfWithoutElse = ifExprInBlock && endsInIfWithoutElse(node.ifExpr.exprs[node.ifExpr.exprs.length - 1])
 
         let ifDoc = path.call(print, 'ifExpr')
         if (newlinePrior(node.ifExpr._start.filePos())) {
           ifDoc = doWrap(ifDoc)
           ifExprInBlock = true
-          lastExprInIf_is_IfWithoutElse = isIfWithoutElse(node.ifExpr)
+          lastExprInIf_is_IfWithoutElse = endsInIfWithoutElse(node.ifExpr)
         }
 
         if ("elseExpr" in node) {
@@ -433,8 +433,25 @@ function doWrap(docs) {
   ), pb.hardlineWithoutBreakParent, "end"]
 }
 
-function isIfWithoutElse(expr) {
-  return expr._type == axon.ExprType.ifExpr() && expr.elseExpr === undefined
+function endsInIfWithoutElse(expr) {
+  while (true) {
+    if (expr._type === axon.ExprType.ifExpr()) {
+      if (expr.elseExpr === undefined) return true
+      else {
+        expr = expr.elseExpr
+        continue
+      }
+    }
+    if (expr._type === axon.ExprType.tryExpr()) {
+      expr = expr.catchExpr
+      continue
+    }
+    break
+  }
+  return false
+}
+
+function isBracketOperator(expr) {
 }
 
 class TrioSrc {
