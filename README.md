@@ -5,7 +5,7 @@
 ```
 npm install
 rm -rf src/haxall
-cp -R node_modules/@haxall/haxall/ src/
+cp -R node_modules/@haxall/haxall src/
 git checkout src/haxall/esm/axon.js
 git checkout src/haxall/esm/haystack.js
 ```
