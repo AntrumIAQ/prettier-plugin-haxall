@@ -177,13 +177,20 @@ function printAxon(path, options, print) {
       case axon.ExprType.dict(): {
         const keys = path.map(print, "names")
         const values = path.map(print, "vals")
+        for (let i = 0; i < keys.length; ++i) {
+          if (values[i] == "marker") values[i] = ""
+          if (values[i] == "remove") {
+            values[i] = ""
+            keys[i] = "-" + keys[i]
+          }
+        }
         const longestKeyLength = Math.max(...(keys.map(k => k.length)));
-        const pairs = keys.map((k, i) => [k, values[i] == "marker" ? "" : [":", pb.ifBreak(" ".repeat(longestKeyLength - k.length + 1), " "), values[i]]]);
+        const pairs = keys.map((k, i) => [k, values[i] == "" ? "" : [":", pb.ifBreak(" ".repeat(longestKeyLength - k.length + 1), " "), values[i]]]);
 
         let trailingComma = false
         if (node.vals.length > 0) {
           let lastIndex = node.vals.length - 1
-          let isMarker = values[lastIndex] == "marker" || values[lastIndex] == "<marker>"
+          let isMarker = values[lastIndex] == ""
           let lastNode = isMarker ? node.names[lastIndex] : node.vals[lastIndex]
           trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
         }
@@ -441,11 +448,16 @@ function parseTrio(text, options) {
   const ast = { children: [], comments: [] }
   const reader = haystack.TrioReader.make(sys.Str.in(text))
   reader.eachDict((value) => {
+    let src = value.get("src")
+    if (src !== null) {
+      let trimmed = src.trim()
+      if (trimmed.length > 0 && trimmed[0] == '(') src = new TrioSrc(src, reader.srcLineNum())
+    }
     ast.children.push({
       _start: axon.Loc.make(options.filepath, reader.recLineNum(), reader.recFilePos()),
       _end: axon.Loc.make(options.filepath, reader.__lineNum(), reader.filePos()),
       dict: value,
-      src: new TrioSrc(value.get("src"), reader.srcLineNum())
+      src: src
     })
   });
   return ast
@@ -453,7 +465,7 @@ function parseTrio(text, options) {
 
 function printTrio(path, options, print) {
   const node = path.getNode()
-  if ("children" in node) return pb.join(pb.concat(["---", pb.hardline]), path.map(print, "children"))
+  if (node.children !== undefined) return pb.join(pb.concat(["---", pb.hardline]), path.map(print, "children"))
 
   let docs = []
 
@@ -495,7 +507,7 @@ function printTrio(path, options, print) {
     }
 
     let str = sys.ObjUtil.coerce(v, sys.Str.type$);
-    if (n == "src") {
+    if (n == "src" && path.node.src instanceof TrioSrc) {
       docs = docs.concat([pb.indent([pb.hardline, path.call(print, "src")]), pb.hardline])
     }
     else if (!sys.Str.contains(str, "\n")) {
