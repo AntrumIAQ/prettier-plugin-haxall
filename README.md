@@ -39,3 +39,8 @@ Write `~/.prettierrc` with
 ### commandline:
 
 `prettier <path>`
+
+### notes:
+
+- axon parse errors in trio files are not printed unless `PRETTIER_DEBUG` environment variable is set
+- the errors present as a Dict.each error in haystack otherwise
