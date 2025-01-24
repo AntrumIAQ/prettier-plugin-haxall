@@ -1,0 +1,31 @@
+{
+  "name": "prettier-plugin-haxall",
+  "version": "0.1.0",
+  "description": "",
+  "main": "./dist/index.js",
+  "type": "module",
+  "keywords": [
+    "prettier",
+    "axon",
+    "trio",
+    "fantom",
+    "skyspark",
+    "haxall",
+    "plugin"
+  ],
+  "dependencies": {
+    "prettier": "^3.4",
+    "@haxall/haxall": "3.1.11"
+  },
+  "devDependencies": {
+    "@types/node": "*",
+    "jest": "^29",
+    "jest-watch-typeahead": "^2",
+    "typescript": "^5"
+  },
+  "scripts": {
+    "axon": "prettier --plugin ./src/index.js --print-width 120 example.axon",
+    "trio": "prettier --plugin ./src/index.js --print-width 120 example.trio",
+    "test": "jest"
+  }
+}
