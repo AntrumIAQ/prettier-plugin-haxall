@@ -1,3 +1,5 @@
+process.env.PRETTIER_DEBUG = true
+
 import * as fan from './haxall/fan.js'
 import * as sys from './haxall/esm/sys.js'
 import * as axon from './haxall/esm/axon.js'
