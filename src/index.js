@@ -272,6 +272,7 @@ function printAxon(path, options, print) {
         return [path.call(print, "typeRef"), ".", path.call(print, "funcName"), argsGroup(path.map(print, 'args'), node.func._end.filePos(), node.args)]
 
       case axon.ExprType.trapCall():
+        if (node.lhs._type == axon.ExprType.dotCall() && node.lhs.func.name.value != "get") node.lhs._args_need_parens = true
         return [path.call(print, "lhs"), "->", node.rhs.val.value]
 
       case axon.ExprType.block(): {
