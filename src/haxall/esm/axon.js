@@ -1,6 +1,6 @@
 // cjs require begin
 
-
+// Modifications: preserve comments and file positions
 
 
 
