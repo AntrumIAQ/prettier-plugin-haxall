@@ -65,7 +65,7 @@ src:
   ]
   ```
 
-### Manual breaks in parentheticals and binary expressions are respected
+### Manual breaks in parentheticals, binary expressions, and before `else` and `catch` are respected
 So these are all left unmodified:
 
 
@@ -86,8 +86,26 @@ So these are all left unmodified:
   )
   ```
 
-
-
+### `do` blocks are added when `if`/`else` clauses are on  new lines
+Unmodified:
+```
+if (4.isOdd) "odd" else "even"
+```
+`do` blocks added:
+```
+if (4.isOdd)
+  "odd"
+else
+  "even"
+```
+becomes:
+```
+if (4.isOdd) do
+  "odd"
+else do
+  "even"
+end
+```
 # Setup
 
 These instructions are known working on Ubuntu.
