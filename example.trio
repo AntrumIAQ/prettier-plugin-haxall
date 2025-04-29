@@ -1,0 +1,17 @@
+name: findMoreDuplicates
+func
+src:
+  () => do
+  grid: [].toGrid
+  allPts: readAll(point and equipRef).map(pt => {id: pt->id, 
+	equipRef: pt->equipRef, stage: pt["stage"], 
+	tags: pt.findAll(v => v != null).names.toStr})
+  allPts.each pt => do
+    res: allPts.findAll( r => pt->tags == r->tags and pt->equipRef == r->equipRef and pt[ "stage"]== r["stage"])
+    if (res.size > 1) 
+    grid = grid.addRows(res)
+  end
+  g: grid.unique("id" ) 
+  g.addMeta( {count: g.size})
+  end
+
