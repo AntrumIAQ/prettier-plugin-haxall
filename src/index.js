@@ -10,6 +10,8 @@ import { utils } from "prettier/doc"
 const pb = builders;
 const pu = utils;
 
+sys.Unit.define("per_unum, ⁄₁; ; 1");
+
 concurrent.Actor.locals().set(haystack.Etc.cxActorLocalsKey(), new axon.AxonContext());
 
 function makeAxonNode(obj) {
