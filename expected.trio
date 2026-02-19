@@ -2,17 +2,21 @@ name: findMoreDuplicates
 func
 src:
   () => do
-  grid: [].toGrid
-  allPts: readAll(point and equipRef).map(pt => {id: pt->id, 
-	equipRef: pt->equipRef, stage: pt["stage"], 
-	tags: pt.findAll(v => v != null).names.toStr})
-  allPts.each pt => do
-    res: allPts.findAll( r => pt->tags == r->tags and pt->equipRef == r->equipRef and pt[ "stage"]== r["stage"])
-    if (res.size > 1) 
-    grid = grid.addRows(res)
-  end
-  g: grid.unique("id" ) 
-  g.addMeta( {count: g.size})
+    grid: [].toGrid
+    allPts: readAll(point and equipRef).map pt => {
+      id:       pt->id,
+      equipRef: pt->equipRef,
+      stage:    pt["stage"],
+      tags:     pt.findAll(v => v != null).names.toStr
+    }
+    allPts.each pt => do
+      res: allPts.findAll r => pt->tags == r->tags and pt->equipRef == r->equipRef and pt["stage"] == r["stage"]
+      if (res.size > 1) do
+        grid = grid.addRows(res)
+      end
+    end
+    g: grid.unique("id")
+    g.addMeta({count: g.size})
   end
 ---
 name: minusInDefaultParam
@@ -42,7 +46,7 @@ name: removeSomeParens
 func
 src:
   () => do
-    2025.toStr()
+    2025.toStr
     5
   end
 ---
@@ -52,20 +56,20 @@ src:
   () => do
     2025.toStr()
 
+    // A comment is tricky?
 
-      // A comment is tricky?
-
-
-        (   1  + 1) == 2
+    (1 + 1) == 2
   end
 ---
 name: extraTricky
 func
 src:
   () => do
-  2025.toStr()
-    /* What about multiline?
-    // the end */
+    2025.toStr()
+    /*
+      What about multiline?
+      // the end
+    */
     (1 + 1) == 2
     /* just some other comment that wouldn't need the parens to stay */
     5

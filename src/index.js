@@ -18,6 +18,11 @@ function makeAxonNode(obj) {
   if (sys.ObjUtil.is(obj, axon.Expr.type$)) {
     return new AxonTree(obj)
   }
+  else if (sys.ObjUtil.is(obj, axon.FnParam.type$)) {
+    const node = { _type: "param", _start: obj.startLoc(), _end: obj.endLoc(), name: obj.name() }
+    if (obj.hasDef()) node.def = makeAxonNode(obj.def())
+    return node
+  }
   else if (sys.ObjUtil.is(obj, sys.Type.find("sys::List"))) {
     const values = new Array()
     obj.each((value) => values.push(makeAxonNode(value)))
@@ -59,7 +64,7 @@ class AxonTree {
       this.rhs = this.args[1]
     }
     else if (this._type == axon.ExprType.partialCall()) {
-      this._expr.args().each((arg, i) => { if (arg === null) this.args[i].value = { toStr: function () { return "_" } } })
+      this._expr.args().each((arg, i) => { if (arg === null) this.args[i].value = "_" })
     }
   }
 }
@@ -108,6 +113,24 @@ function printAxon(path, options, print) {
     return false
   }
 
+  const nextCharAcrossLines = function (filePos) {
+    for (let index = filePos; index < options.originalText.length; ++index) {
+      let ch = options.originalText[index]
+      if (ch == '/' && options.originalText[index + 1] == '/') {
+        while (index < options.originalText.length && options.originalText[index] != '\n') index++
+        continue
+      }
+      if (ch == '/' && options.originalText[index + 1] == '*') {
+        index += 2
+        while (index + 1 < options.originalText.length && !(options.originalText[index] == '*' && options.originalText[index + 1] == '/')) index++
+        index++ // skip the closing '/'
+        continue
+      }
+      if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r') return ch
+    }
+    return null
+  }
+
   const parens = function (expr, docs) {
     if (expr === undefined || !expr._inParens) return docs
 
@@ -122,7 +145,7 @@ function printAxon(path, options, print) {
   }
 
   function argsGroup(args, groupId, argExprs) {
-    let parenBreak = (args.length >= 1 && newlinePrior(argExprs[0]._start.filePos())) ? pb.hardlineWithoutBreakParent : pb.softline
+    let parenBreak = (args.length >= 1 && argExprs[0]._start != null && newlinePrior(argExprs[0]._start.filePos())) ? pb.hardlineWithoutBreakParent : pb.softline
     if (args.length > 1 || parenBreak == pb.hardlineWithoutBreakParent) {
       return pb.group([
         '(',
@@ -146,9 +169,16 @@ function printAxon(path, options, print) {
       case "literal":
         return String(node.value)
 
+      case "param":
+        if ("def" in node) return [node.name, ": ", path.call(print, "def")]
+        return node.name
+
       case axon.ExprType.literal():
         if (node._start !== null) {
-          return options.originalText.substring(node._start.filePos(), node._end.filePos() + 1)
+          let start = node._start.filePos()
+          let end = node._end.filePos()
+          if (node._expr._inParens) { start++; end-- }
+          return options.originalText.substring(start, end + 1)
         }
         return path.call(print, "val")
 
@@ -257,7 +287,8 @@ function printAxon(path, options, print) {
         let isDotCallLeaf = path.parent !== null && path.parent._type != axon.ExprType.dotCall()
         const argDocs = path.map(print, 'args')
         let trailingLamdba = null
-        if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
+        const isCallBinaryOpLhs = path.parent !== null && "rhs" in path.parent && path.parent.lhs === node
+        if (isDotCallLeaf && !isCallBinaryOpLhs && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
           trailingLamdba = argDocs.splice(-1, 1).pop()
         }
         let docs = [path.call(print, "func"), argsGroup(argDocs, node.func._end.filePos(), node.args)]
@@ -361,7 +392,8 @@ function printAxon(path, options, print) {
         const argDocs = path.map(print, 'args')
 
         let trailingLamdba = null
-        if (!node._args_need_parens && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
+        const isDotCallBinaryOpLhs = path.parent !== null && "rhs" in path.parent && path.parent.lhs === node
+        if (!node._args_need_parens && !isDotCallBinaryOpLhs && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
           trailingLamdba = argDocs.splice(-1, 1).pop()
         }
 
@@ -370,7 +402,9 @@ function printAxon(path, options, print) {
         }
         else {
           let dotAndRhsDocs = [dotBreak, ".", path.call(print, "func")];
-          if (argDocs.length > 0 || (trailingLamdba !== null && node.args[node.args.length - 1].params.length != 1)) {
+          const nextLineOpensWithParen = argDocs.length === 0 && trailingLamdba === null
+            && nextCharAcrossLines(node._end.filePos() + 1) === '('
+          if (argDocs.length > 0 || (trailingLamdba !== null && node.args[node.args.length - 1].params.length != 1) || nextLineOpensWithParen) {
             dotAndRhsDocs.push(argsGroup(argDocs, node.func._end.filePos(), node.args))
           }
           if (trailingLamdba !== null) {
