@@ -18,6 +18,11 @@ function makeAxonNode(obj) {
   if (sys.ObjUtil.is(obj, axon.Expr.type$)) {
     return new AxonTree(obj)
   }
+  else if (sys.ObjUtil.is(obj, axon.FnParam.type$)) {
+    const node = { _type: "param", _start: obj.startLoc(), _end: obj.endLoc(), name: obj.name() }
+    if (obj.hasDef()) node.def = makeAxonNode(obj.def())
+    return node
+  }
   else if (sys.ObjUtil.is(obj, sys.Type.find("sys::List"))) {
     const values = new Array()
     obj.each((value) => values.push(makeAxonNode(value)))
@@ -145,6 +150,10 @@ function printAxon(path, options, print) {
 
       case "literal":
         return String(node.value)
+
+      case "param":
+        if ("def" in node) return [node.name, ": ", path.call(print, "def")]
+        return node.name
 
       case axon.ExprType.literal():
         if (node._start !== null) {
