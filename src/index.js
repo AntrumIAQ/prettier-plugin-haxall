@@ -157,7 +157,10 @@ function printAxon(path, options, print) {
 
       case axon.ExprType.literal():
         if (node._start !== null) {
-          return options.originalText.substring(node._start.filePos(), node._end.filePos() + 1)
+          let start = node._start.filePos()
+          let end = node._end.filePos()
+          if (node._expr._inParens) { start++; end-- }
+          return options.originalText.substring(start, end + 1)
         }
         return path.call(print, "val")
 
