@@ -29,3 +29,43 @@ name: overeagerParens
 func
 src:
   () => (["x", "y"]).map(r => r.upper) + "Final String"
+---
+name: cantRemoveAllParens
+func
+src:
+  () => do
+    2025.toStr()
+    (1 + 1) == 2
+  end
+---
+name: removeSomeParens
+func
+src:
+  () => do
+    2025.toStr()
+  end
+---
+name: butNotThese
+func
+src:
+  () => do
+    2025.toStr()
+
+
+      // A comment is tricky?
+
+
+        (   1  + 1) == 2
+  end
+---
+name: extraTricky
+func
+src:
+  () => do
+  2025.toStr()
+    /* What about multiline?
+    // the end */
+    (1 + 1) == 2
+    /* just some other comment that wouldn't need the parens to stay */
+    5
+  end

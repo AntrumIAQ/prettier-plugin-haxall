@@ -113,6 +113,24 @@ function printAxon(path, options, print) {
     return false
   }
 
+  const nextCharAcrossLines = function (filePos) {
+    for (let index = filePos; index < options.originalText.length; ++index) {
+      let ch = options.originalText[index]
+      if (ch == '/' && options.originalText[index + 1] == '/') {
+        while (index < options.originalText.length && options.originalText[index] != '\n') index++
+        continue
+      }
+      if (ch == '/' && options.originalText[index + 1] == '*') {
+        index += 2
+        while (index + 1 < options.originalText.length && !(options.originalText[index] == '*' && options.originalText[index + 1] == '/')) index++
+        index++ // skip the closing '/'
+        continue
+      }
+      if (ch != ' ' && ch != '\t' && ch != '\n' && ch != '\r') return ch
+    }
+    return null
+  }
+
   const parens = function (expr, docs) {
     if (expr === undefined || !expr._inParens) return docs
 
@@ -384,7 +402,9 @@ function printAxon(path, options, print) {
         }
         else {
           let dotAndRhsDocs = [dotBreak, ".", path.call(print, "func")];
-          if (argDocs.length > 0 || (trailingLamdba !== null && node.args[node.args.length - 1].params.length != 1)) {
+          const nextLineOpensWithParen = argDocs.length === 0 && trailingLamdba === null
+            && nextCharAcrossLines(node._end.filePos() + 1) === '('
+          if (argDocs.length > 0 || (trailingLamdba !== null && node.args[node.args.length - 1].params.length != 1) || nextLineOpensWithParen) {
             dotAndRhsDocs.push(argsGroup(argDocs, node.func._end.filePos(), node.args))
           }
           if (trailingLamdba !== null) {
