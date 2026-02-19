@@ -24,3 +24,8 @@ name: partialApplication
 func
 src:
   () => foo(_)
+---
+name: overeagerParens
+func
+src:
+  () => (["x", "y"]).map(r => r.upper) + "Final String"

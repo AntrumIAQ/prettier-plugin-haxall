@@ -266,7 +266,8 @@ function printAxon(path, options, print) {
         let isDotCallLeaf = path.parent !== null && path.parent._type != axon.ExprType.dotCall()
         const argDocs = path.map(print, 'args')
         let trailingLamdba = null
-        if (isDotCallLeaf && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
+        const isCallBinaryOpLhs = path.parent !== null && "rhs" in path.parent && path.parent.lhs === node
+        if (isDotCallLeaf && !isCallBinaryOpLhs && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
           trailingLamdba = argDocs.splice(-1, 1).pop()
         }
         let docs = [path.call(print, "func"), argsGroup(argDocs, node.func._end.filePos(), node.args)]
@@ -370,7 +371,8 @@ function printAxon(path, options, print) {
         const argDocs = path.map(print, 'args')
 
         let trailingLamdba = null
-        if (!node._args_need_parens && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
+        const isDotCallBinaryOpLhs = path.parent !== null && "rhs" in path.parent && path.parent.lhs === node
+        if (!node._args_need_parens && !isDotCallBinaryOpLhs && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
           trailingLamdba = argDocs.splice(-1, 1).pop()
         }
 
