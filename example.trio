@@ -14,4 +14,13 @@ src:
   g: grid.unique("id" ) 
   g.addMeta( {count: g.size})
   end
-
+---
+name: minusInDefaultParam
+func
+src:
+  (param: {-minus}) => {-minus}
+---
+name: partialApplication
+func
+src:
+  () => foo(_)

@@ -64,7 +64,7 @@ class AxonTree {
       this.rhs = this.args[1]
     }
     else if (this._type == axon.ExprType.partialCall()) {
-      this._expr.args().each((arg, i) => { if (arg === null) this.args[i].value = { toStr: function () { return "_" } } })
+      this._expr.args().each((arg, i) => { if (arg === null) this.args[i].value = "_" })
     }
   }
 }
@@ -127,7 +127,7 @@ function printAxon(path, options, print) {
   }
 
   function argsGroup(args, groupId, argExprs) {
-    let parenBreak = (args.length >= 1 && newlinePrior(argExprs[0]._start.filePos())) ? pb.hardlineWithoutBreakParent : pb.softline
+    let parenBreak = (args.length >= 1 && argExprs[0]._start != null && newlinePrior(argExprs[0]._start.filePos())) ? pb.hardlineWithoutBreakParent : pb.softline
     if (args.length > 1 || parenBreak == pb.hardlineWithoutBreakParent) {
       return pb.group([
         '(',
