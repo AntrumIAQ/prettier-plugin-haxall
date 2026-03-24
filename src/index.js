@@ -53,7 +53,7 @@ class AxonTree {
     if (this._type == axon.ExprType.dotCall()) {
       this.lhs = this.args.splice(0, 1)[0]
       this._args_need_parens = false
-      this._group_id = this.lhs._end.filePos()
+      this._group_id = Symbol()
       this._break_if_group = this._group_id
       for (let index = 0; index < this.args.length; ++index) {
         if (this.args[index]._type == axon.ExprType.dotCall()) this.args[index]._arg_of_dotcall = this
@@ -189,7 +189,7 @@ function printAxon(path, options, print) {
           trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
         }
 
-        node._group_id = node._start.filePos()
+        node._group_id = Symbol()
         if (node.vals.length > 1 || trailingComma) {
           return pb.group(
             [
@@ -229,7 +229,7 @@ function printAxon(path, options, print) {
           trailingComma = lastNode._end !== null && options.originalText[lastNode._end.filePos() + 1] == ','
         }
 
-        node._group_id = node._start.filePos()
+        node._group_id = Symbol()
         if (node.vals.length > 1 || trailingComma) {
           return pb.group(
             [
@@ -291,7 +291,7 @@ function printAxon(path, options, print) {
         if (isDotCallLeaf && !isCallBinaryOpLhs && node.args.length > 0 && node.args[node.args.length - 1]._type == axon.ExprType.func()) {
           trailingLamdba = argDocs.splice(-1, 1).pop()
         }
-        let docs = [path.call(print, "func"), argsGroup(argDocs, node.func._end.filePos(), node.args)]
+        let docs = [path.call(print, "func"), argsGroup(argDocs, Symbol(), node.args)]
         if (trailingLamdba !== null) {
           docs = docs.concat([" ", trailingLamdba])
         }
@@ -299,10 +299,10 @@ function printAxon(path, options, print) {
       }
 
       case axon.ExprType.partialCall():
-        return [path.call(print, "func"), argsGroup(path.map(print, 'args'), node.func._end.filePos(), node.args)]
+        return [path.call(print, "func"), argsGroup(path.map(print, 'args'), Symbol(), node.args)]
 
       case axon.ExprType.staticCall():
-        return [path.call(print, "typeRef"), ".", path.call(print, "funcName"), argsGroup(path.map(print, 'args'), node.func._end.filePos(), node.args)]
+        return [path.call(print, "typeRef"), ".", path.call(print, "funcName"), argsGroup(path.map(print, 'args'), Symbol(), node.args)]
 
       case axon.ExprType.trapCall():
         if (node.lhs._type == axon.ExprType.dotCall() && node.lhs.func.name.value != "get") node.lhs._args_need_parens = true
@@ -405,7 +405,7 @@ function printAxon(path, options, print) {
           const nextLineOpensWithParen = argDocs.length === 0 && trailingLamdba === null
             && nextCharAcrossLines(node._end.filePos() + 1) === '('
           if (argDocs.length > 0 || (trailingLamdba !== null && node.args[node.args.length - 1].params.length != 1) || nextLineOpensWithParen) {
-            dotAndRhsDocs.push(argsGroup(argDocs, node.func._end.filePos(), node.args))
+            dotAndRhsDocs.push(argsGroup(argDocs, Symbol(), node.args))
           }
           if (trailingLamdba !== null) {
             dotAndRhsDocs = dotAndRhsDocs.concat([" ", trailingLamdba])
