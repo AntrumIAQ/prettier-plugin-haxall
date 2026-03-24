@@ -125,6 +125,8 @@ end
 
 These instructions are known working on Ubuntu.
 
+## Haxall Dependency
+
 ### in this repo dir:
 
 ```
@@ -137,11 +139,18 @@ git checkout lib/haxall/esm/haystack.js
 
 Prettier needs precise code locations of all nodes, so support is injected into the Haxall Axon parser from this repo. A future goal is to work with the Haxall maintainers to achieve native support.
 
-### global prettier install:
+## Fantom Dependency
+
+- Download the latest [fantom](https://fantom.org/download), from it's `bin/` directory run `./fanc js compiler util`.
+- This will result in the javascript code in a `../gen/` folder. Copy the result into the lib directory with `cp <gen dir>/js <prettier plugin dir>/lib/fantom -r`.
+- Finally apply the utils.js.patch with `git apply utils.js.patch`
+- The resulting directory structure should be lib/fantom/esm (etc).
+
+## global prettier install:
 
 `sudo npm install -g prettier`
 
-### enable this plugin:
+## enable this plugin:
 
 Write a [Prettier configuration file](https://prettier.io/docs/configuration) (e.g. `~/.prettierrc`) with
 
@@ -154,7 +163,7 @@ Write a [Prettier configuration file](https://prettier.io/docs/configuration) (e
 }
 ```
 
-### [vscode](https://code.visualstudio.com/) settings:
+## [vscode](https://code.visualstudio.com/) settings:
 
 https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode
 
@@ -165,10 +174,10 @@ https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode
 "prettier.prettierPath": "/usr/lib/node_modules/prettier"
 ```
 
-### other editors
+## other editors
 
 https://prettier.io/docs/editors
 
-### commandline:
+## commandline:
 
 `prettier <path>`

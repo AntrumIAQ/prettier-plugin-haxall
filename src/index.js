@@ -3,6 +3,9 @@ process.env.PRETTIER_DEBUG = true;
 import { printAxon, printTrio } from "./axon-formatter.js";
 import { parseAxon, parseTrio, TrioSrc } from "./axon-parser.js";
 
+import { parseFantom } from "./fantom-parser.js";
+import { formatFantom } from "./fantom-formatter.js";
+
 import { builders } from "prettier/doc";
 const pb = builders;
 
@@ -40,6 +43,12 @@ const languages = [
     name: "Axon",
     parsers: ["axon-parse"],
   },
+  {
+    extensions: [".fan"],
+    name: "Fantom",
+    parsers: ["fantom"],
+    vscodeLanguageIds: ["fantom"],
+  },
 ];
 
 const parsers = {
@@ -55,7 +64,14 @@ const parsers = {
     locEnd: locEnd,
     astFormat: "axon-ast",
   },
+  fantom: {
+    astFormat: "fantom-ast",
+    parse: parseFantom,
+    locStart: () => 0,
+    locEnd: (node) => node.originalText.length,
+  },
 };
+
 const ignoredKeys = new Set([
   "_expr",
   "_type",
@@ -124,10 +140,38 @@ const printers = {
     canAttachComment: canAttachComment,
     getVisitorKeys: getVisitorKeys,
   },
+  "fantom-ast": {
+    print(path, options) {
+      const ast = path.getValue();
+      if (ast.parseError == null) {
+        if (options.fantomDebugAstPass === true) {
+          const file = ast.filepath ?? "<unknown>";
+          console.error(`[fantom-ast] ${file} parse=ok mode=ast-guided`);
+        }
+        return formatFantom(ast.originalText, ast, options);
+      }
+      if (options.fantomDebugAstPass === true) {
+        const file = ast.filepath ?? "<unknown>";
+        const msg = ast.parseError?.msg?.() ?? ast.parseError?.toString?.() ?? String(ast.parseError);
+        console.error(`[fantom-ast] ${file} parse=failed mode=verbatim reason=${msg}`);
+      }
+      return ast.originalText;
+    },
+  },
+};
+
+const options = {
+  fantomDebugAstPass: {
+    type: "boolean",
+    category: "Fantom",
+    default: false,
+    description: "Debug parser-aware formatting phases and parse fallback decisions.",
+  },
 };
 
 export default {
   languages,
   parsers,
   printers,
+  options,
 };
