@@ -9,26 +9,32 @@ Fantom is likely the next focus.
 Help wanted!
 
 ### Before:
-``` trio
+
+```trio
 name: findMoreDuplicates
 func
 src:
-  () => do
-  grid: [].toGrid
-  allPts: readAll(point and equipRef).map(pt => {id: pt->id, 
-	equipRef: pt->equipRef, stage: pt["stage"], 
-	tags: pt.findAll(v => v != null).names.toStr})
-  allPts.each pt => do
-    res: allPts.findAll( r => pt->tags == r->tags and pt->equipRef == r->equipRef and pt[ "stage"]== r["stage"])
-    if (res.size > 1) 
-    grid = grid.addRows(res)
-  end
-  g: grid.unique("id" ) 
-  g.addMeta( {count: g.size})
-  end
+    () => do
+        grid: [].toGrid
+        allPts: readAll(point and equipRef).map pt => {
+            id:       pt->id,
+            equipRef: pt->equipRef,
+            stage:    pt["stage"],
+            tags:     pt.findAll(v => v != null).names.toStr
+        }
+        allPts.each pt => do
+            res: allPts.findAll r => pt->tags == r->tags and pt->equipRef == r->equipRef and pt["stage"] == r["stage"]
+            if (res.size > 1) do
+                grid = grid.addRows(res)
+            end
+        end
+        g: grid.unique("id")
+        g.addMeta({count: g.size})
+    end
 ```
 
 ### After:
+
 ```
 name: findMoreDuplicates
 func
@@ -56,49 +62,57 @@ src:
 
 ### Trailing commas will force breaks on the end of `list` and `dict`
 
-  ` [1,2,3,]` becomes 
-  ```
-  [
-    1,
-    2,
-    3,
-  ]
-  ```
+` [1,2,3,]` becomes
+
+```
+[
+  1,
+  2,
+  3,
+]
+```
 
 ### Manual breaks in parentheticals, binary expressions, and before `else` and `catch` are respected
+
 So these are all left unmodified:
 
+```
+readAll(supply and equipRef->space and spaceRef)
+```
 
-  ```
-  readAll(supply and equipRef->space and spaceRef)
-  ```
+```
+readAll(
+  supply and equipRef->space and spaceRef
+)
+```
 
-  ```
-  readAll(
-    supply and equipRef->space and spaceRef
-  )
-  ```
-  ```
-  readAll(
-    supply and
-    equipRef->space and
-    spaceRef
-  )
-  ```
+```
+readAll(
+  supply and
+  equipRef->space and
+  spaceRef
+)
+```
 
-### `do` blocks are added when `if`/`else` clauses are on  new lines
+### `do` blocks are added when `if`/`else` clauses are on new lines
+
 Unmodified:
+
 ```
 if (4.isOdd) "odd" else "even"
 ```
+
 `do` blocks added:
+
 ```
 if (4.isOdd)
   "odd"
 else
   "even"
 ```
+
 becomes:
+
 ```
 if (4.isOdd) do
   "odd"
@@ -106,6 +120,7 @@ else do
   "even"
 end
 ```
+
 # Setup
 
 These instructions are known working on Ubuntu.
@@ -114,11 +129,12 @@ These instructions are known working on Ubuntu.
 
 ```
 npm install
-rm -rf src/haxall
-cp -R node_modules/@haxall/haxall src/
-git checkout src/haxall/esm/axon.js
-git checkout src/haxall/esm/haystack.js
+rm -rf lib/haxall
+cp -R node_modules/@haxall/haxall lib/
+git checkout lib/haxall/esm/axon.js
+git checkout lib/haxall/esm/haystack.js
 ```
+
 Prettier needs precise code locations of all nodes, so support is injected into the Haxall Axon parser from this repo. A future goal is to work with the Haxall maintainers to achieve native support.
 
 ### global prettier install:
@@ -141,6 +157,7 @@ Write a [Prettier configuration file](https://prettier.io/docs/configuration) (e
 ### [vscode](https://code.visualstudio.com/) settings:
 
 https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode
+
 ```
 "prettier.documentSelectors": [
     "*.trio"
