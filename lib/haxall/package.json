@@ -1,0 +1,17 @@
+{
+  "name": "@haxall/haxall",
+  "version": "3.1.11",
+  "type": "module",
+  "description": "Haxall library for Node.js",
+  "keywords": ["haxall", "xeto", "xetoc", "haystack", "project haystack", "iot"],
+  "homepage": "https://haxall.io",
+  "license": "AFL-3.0",
+  "files": [
+    "esm/",
+    "lib/",
+    "./fan.js"
+  ],
+  "bin": {
+    "xeto": "./xeto.js"
+  }
+}

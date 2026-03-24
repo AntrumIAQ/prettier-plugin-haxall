@@ -1,10 +1,10 @@
 process.env.PRETTIER_DEBUG = true
 
-import * as fan from './haxall/fan.js'
-import * as sys from './haxall/esm/sys.js'
-import * as axon from './haxall/esm/axon.js'
-import * as concurrent from './haxall/esm/concurrent.js'
-import * as haystack from './haxall/esm/haystack.js'
+import * as fan from '../lib/haxall/fan.js'
+import * as sys from '../lib/haxall/esm/sys.js'
+import * as axon from '../lib/haxall/esm/axon.js'
+import * as concurrent from '../lib/haxall/esm/concurrent.js'
+import * as haystack from '../lib/haxall/esm/haystack.js'
 import { builders } from "prettier/doc"
 import { utils } from "prettier/doc"
 const pb = builders;

@@ -21,6 +21,6 @@
     "@types/node": "*"
   },
   "scripts": {
-    "trio": "prettier --plugin ./src/index.js --print-width 120 example.trio"
+    "trio": "prettier --plugin ./src/index.js --print-width 120 examples/trio/example.trio"
   }
 }
