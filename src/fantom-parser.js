@@ -162,6 +162,14 @@ export async function parseFantom(text, { filepath } = {}) {
   const sys = await getSys();
   let unit = null;
   let parseError = null;
+  let shebang = null;
+
+  // Strip shebang before parsing so AST positions are correct
+  if (text.startsWith("#!")) {
+    const nl = text.indexOf("\n");
+    shebang = nl !== -1 ? text.slice(0, nl + 1) : text;
+    text = nl !== -1 ? text.slice(nl + 1) : "";
+  }
 
   try {
     const input = makeCompilerInput(sys, text, filepath);
@@ -184,6 +192,7 @@ export async function parseFantom(text, { filepath } = {}) {
     type: "FantomProgram",
     unit,
     parseError,
+    shebang,
     originalText: text,
     filepath: filepath ?? null,
   };

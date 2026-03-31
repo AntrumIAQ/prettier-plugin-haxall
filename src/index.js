@@ -143,19 +143,20 @@ const printers = {
   "fantom-ast": {
     print(path, options) {
       const ast = path.getValue();
+      const shebang = ast.shebang ?? "";
       if (ast.parseError == null) {
         if (options.fantomDebugAstPass === true) {
           const file = ast.filepath ?? "<unknown>";
           console.error(`[fantom-ast] ${file} parse=ok mode=ast-guided`);
         }
-        return formatFantom(ast.originalText, ast, options);
+        return [shebang, formatFantom(ast.originalText, ast, options)];
       }
       if (options.fantomDebugAstPass === true) {
         const file = ast.filepath ?? "<unknown>";
         const msg = ast.parseError?.msg?.() ?? ast.parseError?.toString?.() ?? String(ast.parseError);
         console.error(`[fantom-ast] ${file} parse=failed mode=verbatim reason=${msg}`);
       }
-      return ast.originalText;
+      return shebang + ast.originalText;
     },
   },
 };
