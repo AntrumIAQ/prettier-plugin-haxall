@@ -2,9 +2,13 @@
 
 A plugin for the [Prettier](https://prettier.io/) opinionated code formatter to support [Haxall](https://haxall.io/) languages - [Axon](https://haxall.io/doc/docHaxall/Axon), [Fantom](https://fantom.org/), [Trio](https://haxall.io/doc/docHaystack/Trio), [Zinc](https://haxall.io/doc/docHaystack/Zinc), etc.
 
-Axon is the initial focus, with just enough Trio and Zinc support to handle Axon in Trio.
+## Supported file types
 
-Fantom is likely the next focus.
+| Extension | Language |
+|-----------|----------|
+| `.axon`   | Axon     |
+| `.trio`   | Trio (with embedded Axon formatting) |
+| `.fan`    | Fantom   |
 
 Help wanted!
 
@@ -123,8 +127,6 @@ end
 
 # Setup
 
-These instructions are known working on Ubuntu.
-
 ## Haxall Dependency
 
 ### in this repo dir:
@@ -141,10 +143,7 @@ Prettier needs precise code locations of all nodes, so support is injected into 
 
 ## Fantom Dependency
 
-- Download the latest [fantom](https://fantom.org/download), from it's `bin/` directory run `./fanc js compiler util`.
-- This will result in the javascript code in a `../gen/` folder. Copy the result into the lib directory with `cp <gen dir>/js <prettier plugin dir>/lib/fantom -r`.
-- Finally apply the utils.js.patch with `git apply utils.js.patch`
-- The resulting directory structure should be lib/fantom/esm (etc).
+The Fantom parser (`lib/fantom/`) is vendored directly in this repository — no separate download or build step is required. It is unmodified output from `fanc js compiler util` and should not be edited by hand.
 
 ## global prettier install:
 
@@ -169,7 +168,9 @@ https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode
 
 ```
 "prettier.documentSelectors": [
-    "*.trio"
+    "*.trio",
+    "*.axon",
+    "*.fan"
   ],
 "prettier.prettierPath": "/usr/lib/node_modules/prettier"
 ```
