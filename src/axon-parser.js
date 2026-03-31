@@ -2,6 +2,7 @@ import * as sys from "../lib/haxall/esm/sys.js";
 import * as concurrent from "../lib/haxall/esm/concurrent.js";
 import * as haystack from "../lib/haxall/esm/haystack.js";
 import * as axon from "../lib/haxall/esm/axon.js";
+import "../lib/haxall/esm/fantom.js";
 
 sys.Unit.define("per_unum, ⁄₁; ; 1");
 concurrent.Actor.locals().set(haystack.Etc.cxActorLocalsKey(), new axon.AxonContext());
