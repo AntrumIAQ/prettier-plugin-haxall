@@ -1,13 +1,45 @@
-import { boot } from "../lib/fantom/esm/fantom.js";
-import * as compiler from "../lib/fantom/esm/compiler.js";
+import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
+import * as nodePath from "node:path";
 
-let bootedSysPromise;
+const __dirname = nodePath.dirname(fileURLToPath(import.meta.url));
+const fantomEsmDir = nodePath.join(__dirname, "..", "lib", "fantom", "esm");
 
-function getSys() {
-  if (!bootedSysPromise) {
-    bootedSysPromise = boot({ FAN_HOME: "./lib/js" });
+// Populated on first boot; all helper functions below reference this module-level var.
+let compiler;
+
+const patchedSystems = new WeakSet();
+const patchedPrototypes = new WeakSet();
+
+function applyRuntimePatches(sys) {
+  if (!sys || patchedSystems.has(sys)) return;
+  for (const proto of [sys.Slot?.prototype, sys.Field?.prototype, sys.Method?.prototype]) {
+    if (!proto || patchedPrototypes.has(proto)) continue;
+    const originalTrap = proto.trap;
+    proto.trap = function patchedTrap(name, args) {
+      if (name === "flags" && typeof this.flags$ === "function") return this.flags$();
+      return originalTrap.call(this, name, args);
+    };
+    patchedPrototypes.add(proto);
   }
-  return bootedSysPromise;
+  patchedSystems.add(sys);
+}
+
+let bootHandlePromise;
+
+function getBootHandle() {
+  if (!bootHandlePromise) {
+    bootHandlePromise = (async () => {
+      const fantomUrl = pathToFileURL(nodePath.join(fantomEsmDir, "fantom.js")).href;
+      const compilerUrl = pathToFileURL(nodePath.join(fantomEsmDir, "compiler.js")).href;
+      const fantomMod = await import(fantomUrl);
+      await fantomMod.boot();
+      applyRuntimePatches(fantomMod.sys);
+      compiler = await import(compilerUrl);
+      return { sys: fantomMod.sys, compiler };
+    })();
+  }
+  return bootHandlePromise;
 }
 
 function makeStrMap(sys) {
@@ -159,7 +191,7 @@ function populateImportedTypes(sys, c, registry) {
 }
 
 export async function parseFantom(text, { filepath } = {}) {
-  const sys = await getSys();
+  const { sys } = await getBootHandle();
   let unit = null;
   let parseError = null;
   let shebang = null;
