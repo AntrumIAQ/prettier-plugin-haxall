@@ -450,6 +450,12 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0)
     return false;
   }
 
+  // Space after "}" when more code follows on the same line: "} Void foo()", "} : elem".
+  // Dot/nav operators and paren closers are handled by earlier rules.
+  if (prev.value === "}") {
+    return next.type === "word" || next.type === "literal";
+  }
+
   if (prev.type === "operator" || next.type === "operator") {
     // Range operators: no spaces around .. and ..<
     if (prev.value === ".." || prev.value === "..<" || next.value === ".." || next.value === "..<") {
@@ -573,6 +579,18 @@ function countStructuralDeltas(code) {
   }
 
   return { openBraces, closeBraces, parenDelta, bracketDelta, startsWithCloser };
+}
+
+// Split lines where a closing brace is followed by more code on the same line,
+// e.g. "  } Void test2()" → "  }\n  Void test2()".
+// Control-flow continuations (else / catch / finally) are intentionally left intact.
+// This is applied as a late pass (after AST-guided rewrites) so that AST line numbers
+// still align with the base-formatted text during the earlier phases.
+function splitCloseBraceContinuations(formatted) {
+  return formatted.replace(
+    /^([ \t]*})([ \t]+)(?!else\b|catch\b|finally\b)(\S)/gm,
+    (_, close, _sp, firstChar) => `${close}\n${firstChar}`,
+  );
 }
 
 function rewriteControlTransitions(formatted) {
@@ -1199,10 +1217,13 @@ function rewriteMethodSignaturesWithAst(formatted, source, ast) {
     if (/^(class|mixin|enum|facet)\b/.test(codeTrim)) {
       return false;
     }
+    if (codeTrim.startsWith("}")) {
+      return false; // never rewrite a line beginning with a closing brace
+    }
     if (!new RegExp(`\\b${slotName}\\s*\\(`).test(codeTrim)) {
       return false;
     }
-    const rebuilt = `${indent}${replacement.trim()}`;
+    const rebuilt = `${indent}${(codeTrim.match(/^(?:@\w+\s+)+/) ?? [""])[0]}${replacement.trim()}`;
     const updated = split.comment ? `${rebuilt} ${split.comment.trimStart()}` : rebuilt;
     if (updated !== original.trimEnd()) {
       lines[idx] = updated;
@@ -1217,17 +1238,30 @@ function rewriteMethodSignaturesWithAst(formatted, source, ast) {
     if (lineNum == null || colNum == null) {
       return null;
     }
-    const sourceLine = sourceLines[lineNum - 1] ?? "";
-    const start = Math.max(0, colNum - 1);
-    const end = codePortionEnd(sourceLine);
-    if (start >= end) {
-      return null;
+    // The Fantom AST's loc() for a method with facets points to the first facet line.
+    // Two cases:
+    //   (a) Facet on its own line: "@DbTest" → skip forward to the next non-facet line
+    //   (b) Inline facet on the same line: "@Js Void foo()" → strip leading @Token tokens
+    for (let offset = 0; offset <= 5; offset++) {
+      const sourceLine = sourceLines[lineNum - 1 + offset] ?? "";
+      const start = offset === 0 ? Math.max(0, colNum - 1) : 0;
+      const end = codePortionEnd(sourceLine);
+      if (start >= end) continue;
+      const snippet = sourceLine.slice(start, end).trimRight();
+      if (snippet === "") continue;
+      // Strip any leading inline facets (@Identifier followed by whitespace)
+      const stripped = snippet.replace(/^(?:@\w+\s+)+/, "");
+      if (stripped === "") {
+        // Line was entirely facet annotations — advance to next line
+        continue;
+      }
+      if (stripped.trimStart().startsWith("@")) {
+        // Still starts with a facet (no trailing space), skip this line
+        continue;
+      }
+      return normalizeMethodHeaderLine(stripped);
     }
-    const snippet = sourceLine.slice(start, end).trimRight();
-    if (snippet === "") {
-      return null;
-    }
-    return normalizeMethodHeaderLine(snippet);
+    return null;
   };
 
   unit.types().each((typeDef) => {
@@ -1258,8 +1292,17 @@ function rewriteMethodSignaturesWithAst(formatted, source, ast) {
         return;
       }
 
+      // target is in formatted-line space. Earlier passes may have changed the line count
+      // vs the original source, so search ±3 lines around the nominal target to find the
+      // actual signature line (the same heuristic used by rewriteSlotHeadersWithAst).
       const target = lineNum - 1;
-      normalizeAt(target, signature, String(slotDef.name()));
+      if (!normalizeAt(target, signature, String(slotDef.name()))) {
+        // The AST loc() for a facet-annotated method points to the first facet line.
+        // Facets always appear BEFORE the signature, so only search forward.
+        for (let delta = 1; delta <= 5; delta++) {
+          if (normalizeAt(target + delta, signature, String(slotDef.name()))) break;
+        }
+      }
       return;
     });
     return;
@@ -1870,7 +1913,8 @@ export function formatFantom(source, ast, options = {}) {
   const astBraceShaped = applyPhase("controlHeadersAst", bodyShaped, (v) => rewriteControlHeadersWithAst(v, ast));
   const braceShaped = applyPhase("controlBraces", astBraceShaped, (v) => rewriteControlBraceStyle(v));
   const unbracedFixed = applyPhase("unbracedBodies", braceShaped, (v) => rewriteUnbracedControlBodies(v, options));
-  const finalText = applyPhase("finalReflow", unbracedFixed, (v) => formatFantomBase(v, options));
+  const closeSplit = applyPhase("closeBraceSplit", unbracedFixed, (v) => splitCloseBraceContinuations(v));
+  const finalText = applyPhase("finalReflow", closeSplit, (v) => formatFantomBase(v, options));
 
   if (options?.fantomDebugAstPass === true) {
     const changedEntries = Object.entries(phaseChanges)
