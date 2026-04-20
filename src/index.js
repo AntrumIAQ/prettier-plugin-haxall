@@ -5,6 +5,8 @@ import { parseAxon, parseTrio, TrioSrc } from "./axon-parser.js";
 
 import { parseFantom } from "./fantom-parser.js";
 import { formatFantom } from "./fantom-formatter.js";
+import { buildFantomAst } from "./fantom-ast-builder.js";
+import { printFantomAst } from "./fantom-ast-printer.js";
 
 import { builders } from "prettier/doc";
 const pb = builders;
@@ -142,21 +144,32 @@ const printers = {
   },
   "fantom-ast": {
     print(path, options) {
-      const ast = path.getValue();
-      const shebang = ast.shebang ?? "";
-      if (ast.parseError == null) {
+      const parseResult = path.getValue();
+      const shebang = parseResult.shebang ?? "";
+
+      if (parseResult.parseError != null) {
         if (options.fantomDebugAstPass === true) {
-          const file = ast.filepath ?? "<unknown>";
-          console.error(`[fantom-ast] ${file} parse=ok mode=ast-guided`);
+          const file = parseResult.filepath ?? "<unknown>";
+          const msg = parseResult.parseError?.msg?.() ?? parseResult.parseError?.toString?.() ?? String(parseResult.parseError);
+          console.error(`[fantom-ast] ${file} parse=failed mode=verbatim reason=${msg}`);
         }
-        return [shebang, formatFantom(ast.originalText, ast, options)];
+        return shebang + parseResult.originalText;
       }
+
       if (options.fantomDebugAstPass === true) {
-        const file = ast.filepath ?? "<unknown>";
-        const msg = ast.parseError?.msg?.() ?? ast.parseError?.toString?.() ?? String(ast.parseError);
-        console.error(`[fantom-ast] ${file} parse=failed mode=verbatim reason=${msg}`);
+        const file = parseResult.filepath ?? "<unknown>";
+        console.error(`[fantom-ast] ${file} parse=ok mode=ast-printer`);
       }
-      return shebang + ast.originalText;
+
+      try {
+        const ast = buildFantomAst(parseResult);
+        return printFantomAst(ast);
+      } catch (err) {
+        if (options.fantomDebugAstPass === true) {
+          console.error(`[fantom-ast] AST printer error, falling back to legacy formatter:`, err);
+        }
+        return [shebang, formatFantom(parseResult.originalText, parseResult, options)];
+      }
     },
   },
 };

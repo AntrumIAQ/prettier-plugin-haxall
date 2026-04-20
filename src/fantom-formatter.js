@@ -187,6 +187,21 @@ function tokenizeCode(code) {
     }
 
     if (ch === '"') {
+      // Triple-quoted string: """..."""
+      if (code.startsWith('"""', i)) {
+        let j = i + 3;
+        while (j < code.length) {
+          if (code.startsWith('"""', j)) {
+            j += 3;
+            break;
+          }
+          j += 1;
+        }
+        tokens.push({ type: "literal", value: code.slice(i, j) });
+        i = j;
+        continue;
+      }
+      // Regular double-quoted string
       let j = i + 1;
       while (j < code.length) {
         if (code[j] === "\\") {
@@ -284,7 +299,30 @@ function tokenizeCode(code) {
   return tokens;
 }
 
-function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0) {
+// Determine if the ")" at tokens[closeIdx] closes a type-cast expression.
+// A cast is "(TypeExpr)" where TypeExpr contains only type tokens: uppercase words, ?, [], ::, ->.
+function isCastCloseAt(tokens, closeIdx) {
+  let depth = 1;
+  let i = closeIdx - 1;
+  while (i >= 0 && depth > 0) {
+    if (tokens[i].value === ")") depth++;
+    else if (tokens[i].value === "(") depth--;
+    i--;
+  }
+  if (depth !== 0) return false;
+  const openIdx = i + 1;
+  // Must have at least one token inside
+  if (closeIdx - openIdx < 2) return false;
+  for (let j = openIdx + 1; j < closeIdx; j++) {
+    const tok = tokens[j];
+    if (tok.type === "word" && /^[a-z]/.test(tok.value)) return false; // lowercase = variable, not type
+    if (tok.type === "literal") return false;
+    if (tok.type === "operator" && tok.value !== "?" && tok.value !== "->" && tok.value !== "::") return false;
+  }
+  return true;
+}
+
+function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0, allTokens = null, currentIdx = -1) {
   const isTypeWord = (t) => t?.type === "word" && /^[A-Z]/.test(t.value);
   const isTypeExprEnd = (t) =>
     t?.value === "]" || t?.value === ")" || t?.value === "?" || t?.value === "->" || isTypeWord(t);
@@ -445,9 +483,11 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0)
     return false; // closing | — no space
   }
 
-  // Cast expression: keep cast and following identifier tight: (Type)name, ((Type)obj)
-  if (prev.value === ")" && next.type === "word" && prevprev?.type === "word" && prevprevprev?.value === "(") {
-    return false;
+  // Cast expression: keep cast and following token tight: (Type)name, (Obj?[])expr, ((Type)obj)
+  if (prev.value === ")" && (next.type === "word" || next.value === "(")) {
+    if (allTokens && currentIdx >= 0 && isCastCloseAt(allTokens, currentIdx - 1)) return false;
+    // Fallback for simple (Type)name without full token context
+    if (prevprev?.type === "word" && /^[A-Z]/.test(prevprev.value) && prevprevprev?.value === "(") return false;
   }
 
   // Space after "}" when more code follows on the same line: "} Void foo()", "} : elem".
@@ -523,6 +563,24 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0)
   );
 }
 
+// Apply regex transforms to non-literal regions of a string, leaving string literal content intact.
+function applyToNonLiterals(str, transforms) {
+  const placeholders = [];
+  const protected_str = str.replace(
+    /"""[\s\S]*?"""|"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`/g,
+    (m) => {
+      const idx = placeholders.length;
+      placeholders.push(m);
+      return `\x00L${idx}\x00`;
+    },
+  );
+  let result = protected_str;
+  for (const [regex, repl] of transforms) {
+    result = result.replace(regex, repl);
+  }
+  return result.replace(/\x00L(\d+)\x00/g, (_, idx) => placeholders[+idx]);
+}
+
 function renderTokens(tokens) {
   let out = "";
   let bracketDepth = 0; // track depth inside [...] for map-type vs map-literal discrimination
@@ -534,7 +592,7 @@ function renderTokens(tokens) {
     const prevprevprev = tokens[i - 3];
     const after = tokens[i + 1]; // look-ahead for context-sensitive rules
 
-    if (needsSpace(prev, token, after, prevprev, prevprevprev, bracketDepth)) {
+    if (needsSpace(prev, token, after, prevprev, prevprevprev, bracketDepth, tokens, i)) {
       out += " ";
     }
     out += token.value;
@@ -549,7 +607,10 @@ function renderTokens(tokens) {
     }
   }
 
-  return out.replace(/\s+\)/g, ")").replace(/\(\s+/g, "(");
+  return applyToNonLiterals(out, [
+    [/\s+\)/g, ")"],
+    [/\(\s+/g, "("],
+  ]);
 }
 
 function countStructuralDeltas(code) {
@@ -627,17 +688,20 @@ function formatLine(line, state) {
     return comment;
   }
 
-  const rendered = renderTokens(tokenizeCode(code))
-    .replace(/\s+\)/g, ")")
-    .replace(/\(\s+/g, "(")
-    .replace(/\s+\]/g, "]")
-    .replace(/\[\s+/g, "[")
+  const rendered = applyToNonLiterals(renderTokens(tokenizeCode(code)), [
+    [/\s+\)/g, ")"],
+    [/\(\s+/g, "("],
+    [/\s+\]/g, "]"],
+    [/\[\s+/g, "["],
+  ])
     // Normalize common closure signature spacing.
     .replace(/\|\s*([A-Za-z_][A-Za-z0-9_,\s]*)\s*\|/g, (_, inner) => `|${inner.trim().replace(/\s*,\s*/g, ", ")}|`)
     .replace(/\|\s*\{/g, "| {");
 
   return comment ? `${rendered} ${comment}` : rendered;
 }
+
+export { formatLine };
 
 export function formatFantomBase(source, options = {}) {
   const text = normalizeNewlines(source);
