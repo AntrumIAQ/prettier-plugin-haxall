@@ -203,6 +203,10 @@ export async function parseFantom(text, { filepath } = {}) {
     text = nl !== -1 ? text.slice(nl + 1) : "";
   }
 
+  // Redirect console.log to console.error during parsing so compiler warnings
+  // (e.g. "Type 'X' not found in pod 'Y'") don't pollute stdout/the formatter output.
+  const origLog = console.log;
+  console.log = console.error;
   try {
     const input = makeCompilerInput(sys, text, filepath);
     const c = compiler.Compiler.make(input);
@@ -218,11 +222,14 @@ export async function parseFantom(text, { filepath } = {}) {
     compiler.Parser.make(c, unit, closures).parse();
   } catch (error) {
     parseError = error;
+  } finally {
+    console.log = origLog;
   }
 
   return {
     type: "FantomProgram",
     unit,
+    compiler,
     parseError,
     shebang,
     originalText: text,

@@ -322,7 +322,7 @@ function isCastCloseAt(tokens, closeIdx) {
   return true;
 }
 
-function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0, allTokens = null, currentIdx = -1) {
+function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0, allTokens = null, currentIdx = -1, isInsidePipe = false) {
   const isTypeWord = (t) => t?.type === "word" && /^[A-Z]/.test(t.value);
   const isTypeExprEnd = (t) =>
     t?.value === "]" || t?.value === ")" || t?.value === "?" || t?.value === "->" || isTypeWord(t);
@@ -335,10 +335,10 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0,
     return false;
   }
 
-  // Space after "{" for inline closure bodies: { return val }.
+  // Space after "{" for inline closure bodies: { return val }, { &name = it }.
   // Multi-line blocks have "{" on its own line so prev is undefined for the body line.
   if (prev.value === "{") {
-    return next.type === "word" || next.type === "literal" || next.value === "(" || next.value === "[";
+    return next.type === "word" || next.type === "literal" || next.value === "(" || next.value === "[" || next.value === "&";
   }
 
   // Space before "}" for inline closure bodies: { stmt } or nested: { a } }.
@@ -351,6 +351,9 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0,
   if (next.value === ")" || next.value === "]" || next.value === "," || next.value === ";") {
     return false;
   }
+
+  // renderTokens adds a space after `,` and `;`; suppress any additional space here.
+  if (prev.value === "," || prev.value === ";") return false;
 
   if (
     next.value === "." ||
@@ -401,26 +404,29 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0,
       if (prevprev?.value === "?") return true;
       return false; // map literal key: no space before :
     }
-    if (after == null) return false; // case label (nothing after :) — no space
     // Ternary colon after a word: cond ? Marker.val : null — need space before ':'
     // We detect this with prevprev heuristic: if prevprev is '?' or a word that looks like value (lowercase)
     if (prev.type === "word") {
       if (prevprev?.value === "?") return true; // cond ? val : ...
       if (prevprev?.value === ".") return true; // cond ? obj.field : ...
+      if (prev.value === "default") return false; // switch default: label — no space before :
     }
+    // End-of-line `:` with no following token: case label or ternary continuation.
+    // If after is null AND prev is word/expr, we can't be sure; default to no space
+    // EXCEPT when the prev chain suggests a ternary (handled above).
+    if (after == null) return false; // case label (nothing after :) — no space
     return prev.type === "word" || prev.value === ")" || prev.value === "]" || prev.value === "}";
   }
 
   // Always add space after a colon when something follows it.
-  // But NOT inside type-annotation brackets [Str:Int] — colon after type-word has no space.
+  // But NOT inside dict/map literals [key:val] or type-annotation brackets [Str:Int].
   if (prev.value === ":") {
     if (bracketDepth > 0) {
-      // Inside [...]: map literal "key": val → space; type [Str:Int] → no space.
-      // Heuristic: if the token before colon (prevprev) was a literal, it's a map key.
-      if (prevprev?.type === "literal") {
-        return next.type === "word" || next.type === "literal" || next.value === "(" || next.value === "[";
-      }
-      return false; // type annotation — no space after :
+      // Inside [...]: add space after `:` for dict literals (string key or lowercase word key),
+      // but NOT for type annotations like [Str:Int] or [Str?:Int].
+      if (prevprev?.type === "literal") return true;  // ["key": val]
+      if (prevprev?.type === "word" && !isTypeWord(prevprev)) return true;  // [key: val]
+      return false;  // [Str:Int], [Str?:Int] — type annotation
     }
     // Type map pair outside []: Str:Obj (but keep spaces for class Foo : Bar)
     if (isTypeWord(prevprev) && (isTypeWord(next) || next.value === "[")) {
@@ -462,8 +468,10 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0,
 
   if (prev.value === "|") {
     if (next.type === "word" && isTypeExprEnd(prevprev)) {
-      return true;
+      return true; // |Dict?[]| onClose — space after closing | for function type annotation
     }
+    // After closing | with named params: |ResizeObserverEntry[] entries| callback
+    if (!isInsidePipe && next.type === "word") return true;
     return false;
   }
 
@@ -471,8 +479,11 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0,
     if (prev.value === "(" || prev.value === "," || prev.value === "|") {
       return false;
     }
-    // Function type close: |Dict?[]| onClose, |->| callback
-    if (after?.type === "word" && isTypeExprEnd(prev)) {
+    // Closing | of a |...| pair: no space before the closing pipe
+    if (isInsidePipe) return false;
+    // Function type close: |Dict?[]| onClose, |->| callback — but NOT after a call's closing `)`
+    // e.g. `method() |param|` should keep the space (closure param list follows)
+    if (after?.type === "word" && isTypeExprEnd(prev) && prev.value !== ")") {
       return false;
     }
     // Space before | only when it OPENS a closure parameter list (next param name follows).
@@ -490,10 +501,29 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0,
     if (prevprev?.type === "word" && /^[A-Z]/.test(prevprev.value) && prevprevprev?.value === "(") return false;
   }
 
-  // Space after "}" when more code follows on the same line: "} Void foo()", "} : elem".
+  // Space after "}" when more code follows on the same line: "} Void foo()", "} : elem", "} ?: default".
   // Dot/nav operators and paren closers are handled by earlier rules.
   if (prev.value === "}") {
-    return next.type === "word" || next.type === "literal";
+    return next.type === "word" || next.type === "literal" || next.type === "operator";
+  }
+
+  // `&fieldName` field-access prefix: no space after `&`, space before `&` in expressions.
+  if (prev.value === "&") {
+    return false; // `&fieldName` stays tight
+  }
+  if (next.value === "&" && after?.type === "word") {
+    // Space before `&fieldName` in expression context: `return &x`, `val := &x`
+    return prev.type === "word" || prev.type === "literal" || prev.type === "operator" || prev.value === ")" || prev.value === "]";
+  }
+
+  // Postfix `++`/`--`: tight with preceding value; prefix `++`/`--`: tight with following token.
+  if (next.value === "++" || next.value === "--") {
+    if (prev.type === "word" || prev.type === "literal" || prev.value === ")" || prev.value === "]") {
+      return false;
+    }
+  }
+  if (prev.value === "++" || prev.value === "--") {
+    return false;
   }
 
   if (prev.type === "operator" || next.type === "operator") {
@@ -524,7 +554,7 @@ function needsSpace(prev, next, after, prevprev, prevprevprev, bracketDepth = 0,
     ) {
       return false;
     }
-    if (prev.value === ")" || prev.value === "]" || prev.type === "literal") return true;
+    if (prev.value === ")" || prev.value === "]" || prev.value === "}" || prev.type === "literal") return true;
     if (prev.type === "word" && /^[a-z]/.test(prev.value)) return true; // lowercase = ternary
     return false; // uppercase type name (Obj?, Str?) — no space before ?
   }
@@ -581,9 +611,11 @@ function applyToNonLiterals(str, transforms) {
   return result.replace(/\x00L(\d+)\x00/g, (_, idx) => placeholders[+idx]);
 }
 
-function renderTokens(tokens) {
+function renderTokens(tokens, initialParenDepth = 0) {
   let out = "";
   let bracketDepth = 0; // track depth inside [...] for map-type vs map-literal discrimination
+  let parenDepth = initialParenDepth; // track depth inside (...) to guard semicolon stripping
+  let pipeDepth = 0; // track whether we're inside a |...| pair (0 = outside, 1 = inside)
 
   for (let i = 0; i < tokens.length; i += 1) {
     const token = tokens[i];
@@ -591,8 +623,16 @@ function renderTokens(tokens) {
     const prevprev = tokens[i - 2]; // two tokens back, for ternary context
     const prevprevprev = tokens[i - 3];
     const after = tokens[i + 1]; // look-ahead for context-sensitive rules
+    const isInsidePipe = pipeDepth > 0;
 
-    if (needsSpace(prev, token, after, prevprev, prevprevprev, bracketDepth, tokens, i)) {
+    // Strip trailing statement-terminator semicolons.
+    // Only strip when `;` is the last token on the line AND we are not inside parens
+    // (a `;` inside parens is part of a `for(init; cond; update)` header and must be kept).
+    if (token.value === ";" && after == null && parenDepth === 0) {
+      continue;
+    }
+
+    if (needsSpace(prev, token, after, prevprev, prevprevprev, bracketDepth, tokens, i, isInsidePipe)) {
       out += " ";
     }
     out += token.value;
@@ -600,6 +640,13 @@ function renderTokens(tokens) {
     // Update bracket depth AFTER rendering the token.
     if (token.value === "[") bracketDepth += 1;
     if (token.value === "]") bracketDepth = Math.max(0, bracketDepth - 1);
+
+    // Update paren depth AFTER rendering the token.
+    if (token.value === "(") parenDepth += 1;
+    if (token.value === ")") parenDepth = Math.max(0, parenDepth - 1);
+
+    // Toggle pipe depth AFTER rendering the token.
+    if (token.value === "|") pipeDepth = 1 - pipeDepth;
 
     // Add space after comma and semicolon (statement separator in inline closures).
     if ((token.value === "," || token.value === ";") && i < tokens.length - 1) {
@@ -679,7 +726,7 @@ function rewriteControlTransitions(formatted) {
   return `${out.join("\n")}\n`;
 }
 
-function formatLine(line, state) {
+function formatLine(line, state, initialParenDepth = 0) {
   const split = splitCodeAndComment(line, state);
   const code = split.code.trim();
   const comment = split.comment ? split.comment.trimStart() : "";
@@ -688,7 +735,7 @@ function formatLine(line, state) {
     return comment;
   }
 
-  const rendered = applyToNonLiterals(renderTokens(tokenizeCode(code)), [
+  const rendered = applyToNonLiterals(renderTokens(tokenizeCode(code), initialParenDepth), [
     [/\s+\)/g, ")"],
     [/\(\s+/g, "("],
     [/\s+\]/g, "]"],
@@ -701,7 +748,7 @@ function formatLine(line, state) {
   return comment ? `${rendered} ${comment}` : rendered;
 }
 
-export { formatLine };
+export { formatLine, splitCodeAndComment };
 
 export function formatFantomBase(source, options = {}) {
   const text = normalizeNewlines(source);
