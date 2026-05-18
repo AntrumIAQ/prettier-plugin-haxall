@@ -374,6 +374,16 @@ function collectBodyRewrites(slot, sourceLines, startLine, endLine, returnType, 
             let exprId = "";
             try { exprId = String(expr.id()); } catch (_) {}
             if (exprId !== constructionId) {
+              // Only strip parens from dot-calls (explicit non-null target).
+              // Bare calls like `foo()` require parens in Fantom — `foo` without
+              // parens is a slot reference, not a call.
+              let hasExplicitTarget = false;
+              try {
+                const target = expr.target();
+                hasExplicitTarget = target !== null && target !== undefined;
+              } catch (_) {}
+              if (!hasExplicitTarget) return;
+
               const loc = expr.loc();
               const line = loc.line();
               const col = loc.col();

@@ -478,7 +478,9 @@ function printFieldDef(field, sourceLines) {
       const rest = initLines.slice(1);
       // For it-block inits the `rest` contains the body and a closing `}`. The `}`
       // must align with the declaration (at `indent`), so anchor to `indent` not `indent+"  "`.
-      const isItBlock = firstInit.endsWith("{");
+      // An it-block may have its `{` on the SAME line as the type (e.g. `Elem {`) or on
+      // the NEXT line (Allman style: `Elem\n{`).
+      const isItBlock = firstInit.endsWith("{") || (rest.length > 0 && rest[0].trim() === "{");
       const reindented = reindentBlock(rest.join("\n"), isItBlock ? indent : indent + "  ");
       lines.push(...reindented);
     }
@@ -758,8 +760,17 @@ function extractFieldInit(sourceLines, startLine, endLine) {
     }
 
     if (braceDepth === 0 && bracketDepth === 0) {
-      // Single-line init
-      return afterAssign || null;
+      // Single-line init — but peek at the next non-blank line within endLine.
+      // If it starts with `{`, the init is actually a multi-line it-block construction.
+      let nextContentLine = null;
+      for (let k = i + 1; k < Math.min(endLine, sourceLines.length); k++) {
+        if (sourceLines[k].trim()) { nextContentLine = sourceLines[k]; break; }
+      }
+      if (nextContentLine && nextContentLine.trim().startsWith("{")) {
+        // Fall through to multi-line collection below
+      } else {
+        return afterAssign || null;
+      }
     }
 
     // Multi-line: collect lines until all depths return to 0
@@ -1172,6 +1183,10 @@ function fixMultiLineCallArgs(lines) {
         // Collect and re-indent args until the matching closing `)`
         let parenDepth = openingDepth; // net open parens from the opening line
         let braceDepth = 0;
+        // Ternary tracking: when a line ends with ` ?` (ternary condition), the
+        // consequent and alternate lines should be indented one extra level.
+        let ternaryActive = false;
+        let ternaryParenDepth = -1;
 
         while (i < lines.length && parenDepth > 0) {
           const argLine = lines[i];
@@ -1188,6 +1203,13 @@ function fixMultiLineCallArgs(lines) {
           const newParenDepth = parenDepth + pBal;
           const newBraceDepth = Math.max(0, braceDepth + bBal);
 
+          // Reset ternary tracking when paren depth decreases below where ternary started
+          if (ternaryActive && parenDepth < ternaryParenDepth) {
+            ternaryActive = false;
+            ternaryParenDepth = -1;
+          }
+          const ternaryBonus = ternaryActive ? 1 : 0;
+
           // Outer call closed: this line's parens bring depth to ≤0
           if (newParenDepth <= 0) {
             if (argTrimmed[0] === ")") {
@@ -1195,7 +1217,7 @@ function fixMultiLineCallArgs(lines) {
               result.push(" ".repeat(callIndent) + argTrimmed);
             } else {
               // Content + trailing closing parens — use current depth
-              const combined = (parenDepth - 1) + braceDepth;
+              const combined = (parenDepth - 1) + braceDepth + ternaryBonus;
               result.push(" ".repeat(callIndent + 2 + combined * 2) + argTrimmed);
             }
             parenDepth = 0;
@@ -1213,8 +1235,15 @@ function fixMultiLineCallArgs(lines) {
             outBrace = newBraceDepth; // depth after decrement
           }
 
-          const combined = (outParen - 1) + outBrace;
+          const combined = (outParen - 1) + outBrace + ternaryBonus;
           result.push(" ".repeat(callIndent + 2 + combined * 2) + argTrimmed);
+
+          // After emitting line: detect ternary condition (line ending with ` ?` where
+          // ` ?` is the ternary operator, not `?.` safe-dispatch or a nullable type suffix).
+          if (!ternaryActive && argTrimmed.endsWith(" ?")) {
+            ternaryActive = true;
+            ternaryParenDepth = newParenDepth; // depth after this line
+          }
 
           parenDepth = newParenDepth;
           braceDepth = newBraceDepth;
