@@ -407,8 +407,8 @@ function collectBodyRewrites(slot, sourceLines, startLine, endLine, returnType, 
             for (let i = 0; i < stmts.size(); i++) visitStmtNode(stmts.get(i));
           }
         } catch (_) {}
-        // trueBlock / falseBlock for if statements
-        for (const acc of ["trueBlock", "falseBlock"]) {
+        // trueBlock / falseBlock for if statements; finallyBlock for try
+        for (const acc of ["trueBlock", "falseBlock", "finallyBlock", "defaultBlock"]) {
           try {
             const block = stmt[acc] ? stmt[acc]() : null;
             if (block) {
@@ -417,27 +417,76 @@ function collectBodyRewrites(slot, sourceLines, startLine, endLine, returnType, 
             }
           } catch (_) {}
         }
+        // catches() for try/catch — each Catch has a block
+        try {
+          const catchList = stmt.catches ? stmt.catches() : null;
+          if (catchList) {
+            for (let i = 0; i < catchList.size(); i++) {
+              const catchClause = catchList.get(i);
+              try {
+                const block = catchClause.block ? catchClause.block() : null;
+                if (block) {
+                  const stmts = block.stmts();
+                  for (let j = 0; j < stmts.size(); j++) visitStmtNode(stmts.get(j));
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+        // cases() for switch — each Case has a block and case expressions
+        try {
+          const caseList = stmt.cases ? stmt.cases() : null;
+          if (caseList) {
+            for (let i = 0; i < caseList.size(); i++) {
+              const caseClause = caseList.get(i);
+              try {
+                // Walk case expressions (could contain zero-arg calls)
+                const caseExprs = caseClause.cases ? caseClause.cases() : null;
+                if (caseExprs) {
+                  for (let j = 0; j < caseExprs.size(); j++) visitExprTree(caseExprs.get(j));
+                }
+                // Walk case body
+                const block = caseClause.block ? caseClause.block() : null;
+                if (block) {
+                  const stmts = block.stmts();
+                  for (let j = 0; j < stmts.size(); j++) visitStmtNode(stmts.get(j));
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
       } catch (_) {}
     }
 
     function visitExprTree(expr) {
       if (!expr) return;
       visitExprNode(expr);
-      // Recurse into sub-expressions via known accessors
-      const subAccessors = ["target", "lhs", "rhs", "args"];
-      for (const acc of subAccessors) {
+      // Single-value sub-expression accessors
+      for (const acc of ["target", "lhs", "rhs", "operand", "condition", "trueExpr", "falseExpr"]) {
         try {
           const child = expr[acc] ? expr[acc]() : null;
-          if (!child) continue;
-          // args() returns a Fantom List
-          if (acc === "args") {
-            const sz = child.size();
-            for (let i = 0; i < sz; i++) visitExprTree(child.get(i));
-          } else {
-            visitExprTree(child);
-          }
+          if (child) visitExprTree(child);
         } catch (_) {}
       }
+      // List-of-expr accessors (args, operands for CondExpr, vals for ListExpr/MapExpr)
+      for (const acc of ["args", "operands", "vals"]) {
+        try {
+          const list = expr[acc] ? expr[acc]() : null;
+          if (!list) continue;
+          const sz = list.size();
+          for (let i = 0; i < sz; i++) visitExprTree(list.get(i));
+        } catch (_) {}
+      }
+      // ClosureExpr: visit the closure body block so zero-arg calls inside closures are stripped
+      try {
+        const code = expr.code ? expr.code() : null;
+        if (code) {
+          const stmts = code.stmts ? code.stmts() : null;
+          if (stmts) {
+            for (let i = 0; i < stmts.size(); i++) visitStmtNode(stmts.get(i));
+          }
+        }
+      } catch (_) {}
     }
 
     const stmts = code.stmts();

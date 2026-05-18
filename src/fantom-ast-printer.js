@@ -469,10 +469,17 @@ function printFieldDef(field, sourceLines) {
     if (initLines.length === 1) {
       lines.push(`${header} := ${initLines[0].trim()}`);
     } else {
-      const firstInit = initLines[0].trim();
+      let firstInit = initLines[0].trim();
+      // Ensure space before `{` for it-block construction (e.g. `Elem{` → `Elem {`)
+      if (firstInit.endsWith("{") && !firstInit.endsWith(" {")) {
+        firstInit = firstInit.slice(0, -1) + " {";
+      }
       lines.push(`${header} := ${firstInit}`);
       const rest = initLines.slice(1);
-      const reindented = reindentBlock(rest.join("\n"), indent + "  ");
+      // For it-block inits the `rest` contains the body and a closing `}`. The `}`
+      // must align with the declaration (at `indent`), so anchor to `indent` not `indent+"  "`.
+      const isItBlock = firstInit.endsWith("{");
+      const reindented = reindentBlock(rest.join("\n"), isItBlock ? indent : indent + "  ");
       lines.push(...reindented);
     }
     // If there is an accessor block after a single-line init, emit those lines
@@ -854,6 +861,31 @@ function allmanifyLine(line) {
 }
 
 /**
+ * Processes a source line character-by-character (string-aware) to update the
+ * non-paren container stack. Pushes 'brace' for `{` and 'bracket' for `[`; pops on
+ * `}` or `]`. The top of the returned stack is the innermost non-paren container.
+ */
+function parseNonParenStack(line, stack) {
+  const newStack = [...stack];
+  let inStr = false;
+  let strChar = "";
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inStr) {
+      if (ch === "\\" && strChar !== "`") { i++; continue; }
+      if (ch === strChar) inStr = false;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === "`") { inStr = true; strChar = ch; continue; }
+    if (ch === "/" && line[i + 1] === "/") break; // line comment
+    if (ch === "{") newStack.push("brace");
+    else if (ch === "[") newStack.push("bracket");
+    else if (ch === "}" || ch === "]") { if (newStack.length > 0) newStack.pop(); }
+  }
+  return newStack;
+}
+
+/**
  * Finds the minimum indentation of all non-empty lines, strips it, then
  * prepends targetIndent to every line. Applies formatLine for spacing normalization
  * and allmanifyLine for Allman brace conversion on control-flow constructs.
@@ -878,14 +910,14 @@ function reindentBlock(text, targetIndent) {
     return n;
   };
 
-  // Compute minIndent and indentUnit using only structural lines (paren/bracket depth 0).
-  // Continuation lines (inside multi-line calls or list literals) are excluded so that
-  // mis-indented arguments don't corrupt the structural indent unit for the whole body.
-  let parenD = 0, bracketD = 0;
+  // Compute minIndent and indentUnit using only structural lines (paren/bracket/brace depth 0).
+  // Continuation lines (inside multi-line calls, list literals, or it-blocks) are excluded so
+  // that mis-indented content doesn't corrupt the structural indent unit for the whole body.
+  let parenD = 0, bracketD = 0, braceD = 0;
   let minIndent = Infinity;
   for (const line of lines) {
     if (line.trim() === "") continue;
-    if (parenD === 0 && bracketD === 0) {
+    if (parenD === 0 && bracketD === 0 && braceD === 0) {
       const leading = indentLen(line);
       if (leading < minIndent) minIndent = leading;
     }
@@ -895,17 +927,18 @@ function reindentBlock(text, targetIndent) {
       else if (ch === "[") bracketD++;
       else if (ch === "]") bracketD = Math.max(0, bracketD - 1);
     }
+    braceD = Math.max(0, braceD + braceLineBalance(line));
   }
   if (minIndent === Infinity) minIndent = 0;
 
   // Detect the source indent unit (smallest non-zero relative indent among structural lines).
   // Using min (not GCD) avoids edge cases where alignment continuation lines
   // (e.g., 13-space continuations) corrupt the structural indent unit via GCD.
-  parenD = 0; bracketD = 0;
+  parenD = 0; bracketD = 0; braceD = 0;
   let indentUnit = 0;
   for (const line of lines) {
     if (line.trim() === "") continue;
-    if (parenD === 0 && bracketD === 0) {
+    if (parenD === 0 && bracketD === 0 && braceD === 0) {
       const rel = indentLen(line) - minIndent;
       if (rel > 0 && (indentUnit === 0 || rel < indentUnit)) indentUnit = rel;
     }
@@ -915,36 +948,83 @@ function reindentBlock(text, targetIndent) {
       else if (ch === "[") bracketD++;
       else if (ch === "]") bracketD = Math.max(0, bracketD - 1);
     }
+    braceD = Math.max(0, braceD + braceLineBalance(line));
   }
   if (indentUnit === 0) indentUnit = 2; // flat or all-continuation block — use 2-space default
 
   const state = { inBlockComment: false, inTripleString: false };
   const result = [];
   let crossLineParenDepth = 0; // track open parens spanning multiple lines for semicolon guarding
+  parenD = 0; // reuse parenD — reset for main pass (structural check)
+  // nonParenStack: tracks the ORDER in which `{` (brace) and `[` (bracket) containers were opened.
+  // The top of this stack tells us which is the innermost non-paren container.
+  // braceStack/bracketStack: output levels at each corresponding opener.
+  const nonParenStack = []; // 'brace' | 'bracket'
+  const braceStack = [];
+  const bracketStack = [];
   for (const line of lines) {
     if (line.trim() === "") {
       result.push("");
       continue;
     }
     const rel = indentLen(line) - minIndent;
-    // Normalize: convert source indent levels to canonical 2-space levels
-    const level = Math.round(rel / indentUnit);
-    const normalizedLeading = "  ".repeat(level);
+    // Capture container state BEFORE this line (to determine indentation of this line)
+    const nonParenTop = nonParenStack.length > 0 ? nonParenStack[nonParenStack.length - 1] : null;
+    const bracesBefore = nonParenStack.filter(t => t === "brace").length;
+    const bracketsBefore = nonParenStack.filter(t => t === "bracket").length;
+    let level;
+
+    if (nonParenTop === null && parenD === 0) {
+      // Structural line: normalize via level rounding
+      level = Math.round(rel / indentUnit);
+    } else if (nonParenTop === "brace") {
+      // Brace is the innermost container (closure/it-block body).
+      // A closing `}` returns to the opener's level; body lines go one level deeper.
+      const isClosingBrace = line.trim()[0] === "}";
+      level = braceStack.length > 0
+        ? (isClosingBrace ? braceStack[bracesBefore - 1] : braceStack[bracesBefore - 1] + 1)
+        : Math.round(rel / indentUnit);
+    } else if (nonParenTop === "bracket") {
+      // Bracket is the innermost container (map/list literal body).
+      // A closing `]` returns to the opener's level; item lines go one level deeper.
+      const isClosingBracket = line.trim()[0] === "]";
+      level = bracketStack.length > 0
+        ? (isClosingBracket ? bracketStack[bracketsBefore - 1] : bracketStack[bracketsBefore - 1] + 1)
+        : Math.round(rel / indentUnit);
+    } else {
+      // Innermost open container is a paren: handled by fixMultiLineCallArgs later
+      level = Math.round(rel / indentUnit);
+    }
+
+    const normalizedLeading = "  ".repeat(Math.max(0, level));
     const formatted = formatLine(line.trimStart(), state, crossLineParenDepth);
     const reindented = targetIndent + normalizedLeading + formatted;
     result.push(...allmanifyLine(reindented));
-    // Update running paren depth for subsequent lines using raw source (before formatting).
-    // Count parens in the code portion only (skip string/comment content).
-    const { code: lineCode } = splitCodeAndComment(line, {
-      inBlockComment: state.inBlockComment,
-      inTripleString: state.inTripleString,
-    });
-    for (const ch of lineCode) {
-      if (ch === "(") crossLineParenDepth += 1;
-      else if (ch === ")") crossLineParenDepth = Math.max(0, crossLineParenDepth - 1);
+
+    // Update container stacks and paren depth for the next line.
+    // parseNonParenStack processes `{`, `}`, `[`, `]` in order (string-aware).
+    const newNonParenStack = parseNonParenStack(line, nonParenStack);
+    const newBraceCount = newNonParenStack.filter(t => t === "brace").length;
+    const newBracketCount = newNonParenStack.filter(t => t === "bracket").length;
+    if (newBraceCount > bracesBefore) {
+      for (let d = bracesBefore; d < newBraceCount; d++) braceStack.push(level);
+    } else if (newBraceCount < bracesBefore) {
+      for (let d = newBraceCount; d < bracesBefore; d++) braceStack.pop();
     }
+    if (newBracketCount > bracketsBefore) {
+      for (let d = bracketsBefore; d < newBracketCount; d++) bracketStack.push(level);
+    } else if (newBracketCount < bracketsBefore) {
+      for (let d = newBracketCount; d < bracketsBefore; d++) bracketStack.pop();
+    }
+    nonParenStack.length = 0;
+    for (const t of newNonParenStack) nonParenStack.push(t);
+
+    // Update paren depth for the structural check and crossLineParenDepth for formatLine
+    const pBal = parenLineBalance(line);
+    parenD = Math.max(0, parenD + pBal);
+    crossLineParenDepth = Math.max(0, crossLineParenDepth + pBal);
   }
-  return fixMultiLineCallArgs(result);
+  return fixMultiLineCallArgs(fixBracelessBlocks(result));
 }
 
 /**
@@ -975,10 +1055,80 @@ function braceLineBalance(line) {
 }
 
 /**
- * Post-processing pass: for every line ending with `(` that is followed by a
- * multi-line arg list, re-indents all arg lines using paren+brace depth tracking
- * so that args are always at `callIndent + 2 + innerDepth*2` regardless of their
- * original indentation. The closing `)` is placed at `callIndent`.
+ * Post-processing pass: wrap brace-less control-flow bodies in Allman-style braces.
+ * Fantom's `stmtOrBlock` allows single-statement bodies without braces (e.g.,
+ * `try stmt finally stmt`). This pass detects keyword lines with no trailing `{`
+ * and inserts `{` / `}` around the body.
+ *
+ * Runs BEFORE fixMultiLineCallArgs so that multi-line call args inside newly-braced
+ * bodies get properly normalized by fixMultiLineCallArgs.
+ */
+function fixBracelessBlocks(lines) {
+  const keywordRe = /^(try|finally|catch(\s*\([^)]*\))?|else(\s+if\s*\(.*\))?|if\s*\(.*\)|while\s*\(.*\)|for\s*\(.*\)|switch\s*\(.*\))$/;
+  const result = [...lines];
+  let i = 0;
+
+  while (i < result.length) {
+    const line = result[i];
+    if (!line || !line.trim()) { i++; continue; }
+
+    const trimEnd = line.trimEnd();
+    // Only act on lines that don't already end with `{` or `}`
+    if (trimEnd.endsWith("{") || trimEnd.endsWith("}")) { i++; continue; }
+
+    const trimmed = line.trim();
+    if (!keywordRe.test(trimmed)) { i++; continue; }
+
+    const kwIndent = line.search(/\S/);
+
+    // Find next non-empty line
+    let j = i + 1;
+    while (j < result.length && !result[j].trim()) j++;
+    if (j >= result.length) { i++; continue; }
+
+    const nextLine = result[j];
+    const nextIndent = nextLine.search(/\S/);
+    const nextTrimmed = nextLine.trim();
+
+    // If the next non-empty line is `{` at same indent → body already braced (Allman)
+    if (nextIndent === kwIndent && nextTrimmed === "{") { i++; continue; }
+    // If next line is not indented more than keyword → no body follows this keyword
+    if (nextIndent <= kwIndent) { i++; continue; }
+
+    // Find end of block: first line at indent ≤ keyword indent (exclusive),
+    // or a blank line that is followed by a line at ≤ keyword indent.
+    let k = j;
+    while (k < result.length) {
+      const kLine = result[k];
+      if (!kLine.trim()) {
+        // Blank line: peek ahead to see if the next non-empty line exits the body
+        let next = k + 1;
+        while (next < result.length && !result[next].trim()) next++;
+        if (next >= result.length || result[next].search(/\S/) <= kwIndent) break;
+        k++; continue; // blank in the middle of the body (e.g. inside a multi-line call)
+      }
+      if (kLine.search(/\S/) <= kwIndent) break;
+      k++;
+    }
+
+    // Insert `{` before body and `}` after body
+    const braceIndent = " ".repeat(kwIndent);
+    result.splice(j, 0, braceIndent + "{");
+    // After the `{` splice, body runs from j+1 to k, end marker is at k+1
+    result.splice(k + 1, 0, braceIndent + "}");
+
+    i++; // advance past the keyword line; next iteration will see the inserted `{`
+  }
+
+  return result;
+}
+
+/**
+ * Post-processing pass: for every line ending with `(` (or `arg,` that leaves a
+ * paren open) that is followed by a multi-line arg list, re-indents all arg lines
+ * using paren+brace depth tracking so that args are always at
+ * `callIndent + 2 + innerDepth*2` regardless of their original indentation.
+ * The closing `)` is placed at `callIndent`.
  *
  * This handles dangling args (next line at ≤ callIndent), already-indented args,
  * and mis-indented args (e.g., one arg at 15 spaces when others are at 8).
@@ -1002,7 +1152,15 @@ function fixMultiLineCallArgs(lines) {
     const callIndent = line.search(/\S/);
     const trimEnd = line.trimEnd();
 
-    if (trimEnd.endsWith("(")) {
+    // Trigger on lines ending with `(` (pure arg-list opening) or lines that leave a paren
+    // hanging open and end with `,` (first arg on same line as call, e.g. `foo(arg1,`).
+    const netOpenParen = parenLineBalance(trimEnd) > 0;
+    const isMultiLineTrigger = trimEnd.endsWith("(") ||
+      (netOpenParen && trimEnd.endsWith(","));
+
+    if (isMultiLineTrigger) {
+      // Compute the initial paren depth from this opening line
+      const openingDepth = parenLineBalance(trimEnd);
       // Check there is a next line (multi-line call, not an empty call on the last line)
       let j = i + 1;
       while (j < lines.length && !lines[j].trim()) j++;
@@ -1012,7 +1170,7 @@ function fixMultiLineCallArgs(lines) {
         i++;
 
         // Collect and re-indent args until the matching closing `)`
-        let parenDepth = 1; // we opened the outer `(`
+        let parenDepth = openingDepth; // net open parens from the opening line
         let braceDepth = 0;
 
         while (i < lines.length && parenDepth > 0) {

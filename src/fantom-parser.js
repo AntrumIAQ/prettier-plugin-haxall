@@ -203,10 +203,12 @@ export async function parseFantom(text, { filepath } = {}) {
     text = nl !== -1 ? text.slice(nl + 1) : "";
   }
 
-  // Redirect console.log to console.error during parsing so compiler warnings
-  // (e.g. "Type 'X' not found in pod 'Y'") don't pollute stdout/the formatter output.
+  // Suppress console.log during parsing: the vendored Fantom compiler emits type-resolution
+  // warnings (e.g. "Type 'X' not found in pod 'Y'") via console.log for cross-pod references
+  // it can't resolve without a full pod classpath. These are harmless — the AST is still
+  // produced correctly — so we swallow them entirely to keep output clean.
   const origLog = console.log;
-  console.log = console.error;
+  console.log = () => {};
   try {
     const input = makeCompilerInput(sys, text, filepath);
     const c = compiler.Compiler.make(input);
