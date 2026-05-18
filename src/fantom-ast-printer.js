@@ -173,9 +173,8 @@ function printUsing(u) {
 function printTypeDef(td, sourceLines) {
   const lines = [];
 
-  // Facets: some may be inline with the class keyword (e.g. `@Js class Foo`)
-  const { own: ownFacets, inline: inlineFacets } = splitFacets(td.facets, td.startLine, sourceLines);
-  const facetLineGroups = groupFacetsByLine(ownFacets);
+  // Facets: always emit on their own line(s) above the class keyword
+  const facetLineGroups = groupFacetsByLine(td.facets);
   for (const group of facetLineGroups) {
     lines.push(group.map((f) => printFacet(f, "").trim()).join(" "));
   }
@@ -183,8 +182,7 @@ function printTypeDef(td, sourceLines) {
   // Class header keyword
   const keyword = typeKeyword(td.flags);
   const header = buildTypeHeader(keyword, td);
-  const inlinePrefix = inlineFacets.map((f) => printFacet(f, "").trim()).join(" ");
-  lines.push(inlinePrefix ? `${inlinePrefix} ${header}` : header);
+  lines.push(header);
   lines.push("{");
 
   // Slots
@@ -325,19 +323,17 @@ function printMethodDef(method, sourceLines) {
   const lines = [];
   const indent = "  "; // slot-level: 2 spaces
 
-  // Facets: some may be inline with the signature (e.g. `@NoDoc native Str foo()`)
-  const { own: ownFacets, inline: inlineFacets } = splitFacets(method.facets, method.startLine, sourceLines);
-  // Group own facets by their source line so multiple facets on the same line
+  // Facets: always emit on their own line(s) above the signature
+  // Group by source line so multiple facets on the same line
   // (e.g. `@NoDoc @Axon { admin = true }`) are emitted together on one line.
-  const facetLineGroups = groupFacetsByLine(ownFacets);
+  const facetLineGroups = groupFacetsByLine(method.facets);
   for (const group of facetLineGroups) {
     lines.push(indent + group.map((f) => printFacet(f, "").trim()).join(" "));
   }
 
   // Signature (+ optional constructor initializer)
   const sig = buildMethodSignature(method);
-  const inlinePrefix = inlineFacets.map((f) => printFacet(f, "").trim()).join(" ");
-  let sigLine = `${indent}${inlinePrefix ? inlinePrefix + " " : ""}${sig}`;
+  let sigLine = `${indent}${sig}`;
   if (method.hasCtorChain) {
     const init = extractCtorInitializer(sourceLines, method.startLine, method.endLine);
     if (init) sigLine += ` : ${init}`;
@@ -442,9 +438,8 @@ function printFieldDef(field, sourceLines) {
   const lines = [];
   const indent = "  ";
 
-  // Facets: some may be inline (e.g. `@Transient Int count`)
-  const { own: ownFacets, inline: inlineFacets } = splitFacets(field.facets, field.startLine, sourceLines);
-  const facetLineGroups = groupFacetsByLine(ownFacets);
+  // Facets: always emit on their own line(s) above the field declaration
+  const facetLineGroups = groupFacetsByLine(field.facets);
   for (const group of facetLineGroups) {
     lines.push(indent + group.map((f) => printFacet(f, "").trim()).join(" "));
   }
@@ -457,8 +452,7 @@ function printFieldDef(field, sourceLines) {
   if (flags.includes("override") || flags.includes("abstract")) flags = flags.filter((f) => f !== "virtual");
   const modifiers = flags.join(" ");
   const prefix = modifiers ? `${modifiers} ` : "";
-  const inlinePrefix = inlineFacets.map((f) => printFacet(f, "").trim()).join(" ");
-  const header = `${indent}${inlinePrefix ? inlinePrefix + " " : ""}${prefix}${field.fieldType} ${field.name}`;
+  const header = `${indent}${prefix}${field.fieldType} ${field.name}`;
 
   // Find the init value in the source (everything after `:=`)
   const initText = extractFieldInit(sourceLines, field.startLine, field.endLine);
