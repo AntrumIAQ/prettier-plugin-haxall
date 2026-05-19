@@ -2,33 +2,43 @@
 
 A plugin for the [Prettier](https://prettier.io/) opinionated code formatter to support [Haxall](https://haxall.io/) languages - [Axon](https://haxall.io/doc/docHaxall/Axon), [Fantom](https://fantom.org/), [Trio](https://haxall.io/doc/docHaystack/Trio), [Zinc](https://haxall.io/doc/docHaystack/Zinc), etc.
 
-Axon is the initial focus, with just enough Trio and Zinc support to handle Axon in Trio.
+## Supported file types
 
-Fantom is likely the next focus.
+| Extension | Language |
+|-----------|----------|
+| `.axon`   | Axon     |
+| `.trio`   | Trio (with embedded Axon formatting) |
+| `.fan`    | Fantom   |
 
 Help wanted!
 
 ### Before:
-``` trio
+
+```trio
 name: findMoreDuplicates
 func
 src:
-  () => do
-  grid: [].toGrid
-  allPts: readAll(point and equipRef).map(pt => {id: pt->id, 
-	equipRef: pt->equipRef, stage: pt["stage"], 
-	tags: pt.findAll(v => v != null).names.toStr})
-  allPts.each pt => do
-    res: allPts.findAll( r => pt->tags == r->tags and pt->equipRef == r->equipRef and pt[ "stage"]== r["stage"])
-    if (res.size > 1) 
-    grid = grid.addRows(res)
-  end
-  g: grid.unique("id" ) 
-  g.addMeta( {count: g.size})
-  end
+    () => do
+        grid: [].toGrid
+        allPts: readAll(point and equipRef).map pt => {
+            id:       pt->id,
+            equipRef: pt->equipRef,
+            stage:    pt["stage"],
+            tags:     pt.findAll(v => v != null).names.toStr
+        }
+        allPts.each pt => do
+            res: allPts.findAll r => pt->tags == r->tags and pt->equipRef == r->equipRef and pt["stage"] == r["stage"]
+            if (res.size > 1) do
+                grid = grid.addRows(res)
+            end
+        end
+        g: grid.unique("id")
+        g.addMeta({count: g.size})
+    end
 ```
 
 ### After:
+
 ```
 name: findMoreDuplicates
 func
@@ -56,49 +66,57 @@ src:
 
 ### Trailing commas will force breaks on the end of `list` and `dict`
 
-  ` [1,2,3,]` becomes 
-  ```
-  [
-    1,
-    2,
-    3,
-  ]
-  ```
+` [1,2,3,]` becomes
+
+```
+[
+  1,
+  2,
+  3,
+]
+```
 
 ### Manual breaks in parentheticals, binary expressions, and before `else` and `catch` are respected
+
 So these are all left unmodified:
 
+```
+readAll(supply and equipRef->space and spaceRef)
+```
 
-  ```
-  readAll(supply and equipRef->space and spaceRef)
-  ```
+```
+readAll(
+  supply and equipRef->space and spaceRef
+)
+```
 
-  ```
-  readAll(
-    supply and equipRef->space and spaceRef
-  )
-  ```
-  ```
-  readAll(
-    supply and
-    equipRef->space and
-    spaceRef
-  )
-  ```
+```
+readAll(
+  supply and
+  equipRef->space and
+  spaceRef
+)
+```
 
-### `do` blocks are added when `if`/`else` clauses are on  new lines
+### `do` blocks are added when `if`/`else` clauses are on new lines
+
 Unmodified:
+
 ```
 if (4.isOdd) "odd" else "even"
 ```
+
 `do` blocks added:
+
 ```
 if (4.isOdd)
   "odd"
 else
   "even"
 ```
+
 becomes:
+
 ```
 if (4.isOdd) do
   "odd"
@@ -106,26 +124,32 @@ else do
   "even"
 end
 ```
+
 # Setup
 
-These instructions are known working on Ubuntu.
+## Haxall Dependency
 
 ### in this repo dir:
 
 ```
 npm install
-rm -rf src/haxall
-cp -R node_modules/@haxall/haxall src/
-git checkout src/haxall/esm/axon.js
-git checkout src/haxall/esm/haystack.js
+rm -rf lib/haxall
+cp -R node_modules/@haxall/haxall lib/
+git checkout lib/haxall/esm/axon.js
+git checkout lib/haxall/esm/haystack.js
 ```
+
 Prettier needs precise code locations of all nodes, so support is injected into the Haxall Axon parser from this repo. A future goal is to work with the Haxall maintainers to achieve native support.
 
-### global prettier install:
+## Fantom Dependency
+
+The Fantom parser (`lib/fantom/`) is vendored directly in this repository — no separate download or build step is required. It is unmodified output from `fanc js compiler util` and should not be edited by hand.
+
+## global prettier install:
 
 `sudo npm install -g prettier`
 
-### enable this plugin:
+## enable this plugin:
 
 Write a [Prettier configuration file](https://prettier.io/docs/configuration) (e.g. `~/.prettierrc`) with
 
@@ -138,20 +162,23 @@ Write a [Prettier configuration file](https://prettier.io/docs/configuration) (e
 }
 ```
 
-### [vscode](https://code.visualstudio.com/) settings:
+## [vscode](https://code.visualstudio.com/) settings:
 
 https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode
+
 ```
 "prettier.documentSelectors": [
-    "*.trio"
+    "*.trio",
+    "*.axon",
+    "*.fan"
   ],
 "prettier.prettierPath": "/usr/lib/node_modules/prettier"
 ```
 
-### other editors
+## other editors
 
 https://prettier.io/docs/editors
 
-### commandline:
+## commandline:
 
 `prettier <path>`
