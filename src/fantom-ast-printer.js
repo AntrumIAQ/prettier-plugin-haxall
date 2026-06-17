@@ -19,7 +19,12 @@
  *   - Single blank line between slots
  */
 
-import { formatLine, splitCodeAndComment, normalizeParamListText } from "./fantom-formatter.js";
+import {
+  formatLine,
+  splitCodeAndComment,
+  normalizeParamListText,
+  normalizeCtorChainText,
+} from "./fantom-formatter.js";
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -816,7 +821,7 @@ function extractCtorInitializer(sourceLines, startLine, endLine) {
             const braceIdx = initText.indexOf("{");
             const region = braceIdx >= 0 ? initText.slice(0, braceIdx) : initText;
             const colonMatch = region.match(/:\s*(.+?)\s*$/);
-            if (colonMatch) return colonMatch[1].trim();
+            if (colonMatch) return normalizeCtorChainText(colonMatch[1].trim());
             return null;
           }
         }

@@ -748,7 +748,7 @@ function formatLine(line, state, initialParenDepth = 0) {
   return comment ? `${rendered} ${comment}` : rendered;
 }
 
-export { formatLine, splitCodeAndComment, normalizeParamListText };
+export { formatLine, splitCodeAndComment, normalizeParamListText, normalizeCtorChainText };
 
 export function formatFantomBase(source, options = {}) {
   const text = normalizeNewlines(source);
@@ -1274,6 +1274,44 @@ function normalizeParamListText(paramText) {
   return splitTopLevelParams(paramText).map(normalizeParamSegment).join(", ");
 }
 
+function normalizeCtorChainText(text) {
+  if (text == null || text.trim() === "") {
+    return text ?? "";
+  }
+
+  const re = /\b(super|this(?:\.[A-Za-z_][A-Za-z0-9_]*)?)\s*\(/g;
+  const replacements = [];
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const openIdx = m.index + m[0].length - 1;
+    const closeIdx = findMatchingParenOnLine(text, openIdx);
+    if (closeIdx < 0) {
+      continue;
+    }
+    replacements.push({
+      start: m.index,
+      end: closeIdx + 1,
+      replacement: `${m[1]}(${normalizeParamListText(text.slice(openIdx + 1, closeIdx))})`,
+    });
+  }
+
+  let result = text;
+  for (const r of replacements.sort((a, b) => b.start - a.start)) {
+    result = result.slice(0, r.start) + r.replacement + result.slice(r.end);
+  }
+  return result.trim();
+}
+
+function normalizeCtorChainInMethodSuffix(suffix) {
+  const colonIdx = suffix.indexOf(":");
+  if (colonIdx < 0) {
+    return suffix;
+  }
+  const head = suffix.slice(0, colonIdx + 1);
+  const chain = suffix.slice(colonIdx + 1);
+  return `${head} ${normalizeCtorChainText(chain.trimStart())}`;
+}
+
 function normalizeMethodHeaderLine(line) {
   const trimmed = line.trimStart();
   if (
@@ -1303,8 +1341,8 @@ function normalizeMethodHeaderLine(line) {
   const inside = line.slice(open + 1, close);
   const after = line.slice(close);
 
-  const params = splitTopLevelParams(inside).map(normalizeParamSegment).join(", ");
-  return `${before}${params}${after}`;
+  const params = normalizeParamListText(inside);
+  return `${before}${params}${normalizeCtorChainInMethodSuffix(after)}`;
 }
 
 function codePortionEnd(line) {

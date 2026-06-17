@@ -11,6 +11,7 @@ const cases = [
   ["issue-12.fan", "issue-12-expected.fan"],
   ["issue-13.fan", "issue-13-expected.fan"],
   ["issue-14.fan", "issue-14-expected.fan"],
+  ["issue-15.fan", "issue-15-expected.fan"],
 ];
 
 let failed = 0;
