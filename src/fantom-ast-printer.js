@@ -19,7 +19,7 @@
  *   - Single blank line between slots
  */
 
-import { formatLine, splitCodeAndComment } from "./fantom-formatter.js";
+import { formatLine, splitCodeAndComment, normalizeParamListText } from "./fantom-formatter.js";
 
 // ---------------------------------------------------------------------------
 // Public entry point
@@ -406,7 +406,8 @@ function buildMethodSignature(method) {
 
   // Use source param list when available to preserve closure type named params (|Str name|).
   // Fallback to AST-built params when source extraction was not possible.
-  const params = method.sourceParamList ?? buildParamList(method.params);
+  const rawParams = method.sourceParamList ?? buildParamList(method.params);
+  const params = normalizeParamListText(rawParams);
 
   // Constructors: emit `new name(params)` without return type
   if (flags.includes("new")) {
@@ -460,14 +461,12 @@ function printFieldDef(field, sourceLines) {
   if (initText !== null) {
     // Has `:=` init
     const initLines = initText.split("\n");
+    const fmtState = { inBlockComment: false, inTripleString: false };
     if (initLines.length === 1) {
-      lines.push(`${header} := ${initLines[0].trim()}`);
+      const formattedInit = formatLine(initLines[0].trim(), fmtState);
+      lines.push(`${header} := ${formattedInit}`);
     } else {
-      let firstInit = initLines[0].trim();
-      // Ensure space before `{` for it-block construction (e.g. `Elem{` → `Elem {`)
-      if (firstInit.endsWith("{") && !firstInit.endsWith(" {")) {
-        firstInit = firstInit.slice(0, -1) + " {";
-      }
+      let firstInit = formatLine(initLines[0].trim(), fmtState);
       lines.push(`${header} := ${firstInit}`);
       const rest = initLines.slice(1);
       // For it-block inits the `rest` contains the body and a closing `}`. The `}`
@@ -890,6 +889,23 @@ function parseNonParenStack(line, stack) {
   return newStack;
 }
 
+function previousLineExpectsIndentedBody(prevTrimmed) {
+  if (/^(try|finally)\s*$/.test(prevTrimmed)) return true;
+  if (/^catch\b/.test(prevTrimmed)) return true;
+  if (/^else\s*$/.test(prevTrimmed)) return true;
+  if (/^else\s+if\b.*\)\s*$/.test(prevTrimmed)) return true;
+  if (/^(if|for|while)\b.*\)\s*$/.test(prevTrimmed)) return true;
+  return false;
+}
+
+function lineContinuesFromPrevious(prevTrimmed, currTrimmed) {
+  if (previousLineExpectsIndentedBody(prevTrimmed)) return true;
+  if (/[(\[{&?:+\-*/%|&=]$/.test(prevTrimmed)) return true;
+  if (/^[.)\]},:]/.test(currTrimmed)) return true;
+  if (/^(else|catch|finally)\b/.test(currTrimmed)) return true;
+  return false;
+}
+
 /**
  * Finds the minimum indentation of all non-empty lines, strips it, then
  * prepends targetIndent to every line. Applies formatLine for spacing normalization
@@ -967,6 +983,8 @@ function reindentBlock(text, targetIndent) {
   const nonParenStack = []; // 'brace' | 'bracket'
   const braceStack = [];
   const bracketStack = [];
+  let lastStructuralLevel = null;
+  let lastStructuralTrimmed = null;
   for (const line of lines) {
     if (line.trim() === "") {
       result.push("");
@@ -982,6 +1000,17 @@ function reindentBlock(text, targetIndent) {
     if (nonParenTop === null && parenD === 0) {
       // Structural line: normalize via level rounding
       level = Math.round(rel / indentUnit);
+      const currTrimmed = line.trim();
+      if (
+        lastStructuralLevel != null &&
+        level === lastStructuralLevel + 1 &&
+        lastStructuralTrimmed != null &&
+        !lineContinuesFromPrevious(lastStructuralTrimmed, currTrimmed)
+      ) {
+        level = lastStructuralLevel;
+      }
+      lastStructuralLevel = level;
+      lastStructuralTrimmed = currTrimmed;
     } else if (nonParenTop === "brace") {
       // Brace is the innermost container (closure/it-block body).
       // A closing `}` returns to the opener's level; body lines go one level deeper.

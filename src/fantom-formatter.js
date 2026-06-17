@@ -748,7 +748,7 @@ function formatLine(line, state, initialParenDepth = 0) {
   return comment ? `${rendered} ${comment}` : rendered;
 }
 
-export { formatLine, splitCodeAndComment };
+export { formatLine, splitCodeAndComment, normalizeParamListText };
 
 export function formatFantomBase(source, options = {}) {
   const text = normalizeNewlines(source);
@@ -1265,6 +1265,13 @@ function normalizeParamSegment(segment) {
     .replace(/\s*:=\s*/g, " := ")
     .replace(/\s{2,}/g, " ")
     .trim();
+}
+
+function normalizeParamListText(paramText) {
+  if (paramText == null || paramText.trim() === "") {
+    return paramText ?? "";
+  }
+  return splitTopLevelParams(paramText).map(normalizeParamSegment).join(", ");
 }
 
 function normalizeMethodHeaderLine(line) {
