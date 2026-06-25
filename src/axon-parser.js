@@ -5,6 +5,7 @@ import * as axon from "../lib/haxall/esm/axon.js";
 import "../lib/haxall/esm/fantom.js";
 
 sys.Unit.define("per_unum, ⁄₁; ; 1");
+sys.Unit.define("per_cubic_meter, /m³; ; 1");
 concurrent.Actor.locals().set(haystack.Etc.cxActorLocalsKey(), new axon.AxonContext());
 
 export class TrioSrc {
