@@ -100,7 +100,10 @@ export function parseTrio(text, options) {
     let src = value.get("src");
     if (src !== null) {
       let trimmed = src.trim();
-      if (trimmed.length > 0 && trimmed[0] == "(") src = new TrioSrc(src, reader.srcLineNum());
+      // Format axon lambdas "() => ..." and component defs "defcomp ... end"
+      if (trimmed.length > 0 && (trimmed[0] == "(" || trimmed.startsWith("defcomp"))) {
+        src = new TrioSrc(src, reader.srcLineNum());
+      }
     }
     ast.children.push({
       _start: axon.Loc.make(options.filepath, reader.recLineNum(), reader.recFilePos()),

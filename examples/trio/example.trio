@@ -70,3 +70,20 @@ src:
     /* just some other comment that wouldn't need the parens to stay */
     5
   end
+---
+name: awesomeFunc
+dis: Does awesome things
+func
+help: "Take this, it will help you on your way"
+ruleOn: point and not badPoint
+sparkRule
+src:
+  defcomp
+    target: {}
+    date:   {}
+    out:    {readonly}
+    do
+      echo( "Called for " + target.dis )
+      out = hisRead( target, date )
+    end
+  end
