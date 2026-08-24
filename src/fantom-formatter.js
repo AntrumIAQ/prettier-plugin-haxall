@@ -98,14 +98,25 @@ function isIdentifierPart(ch) {
 
 function splitCodeAndComment(line, state) {
   let i = 0;
+  // Index where the (single, trailing) comment span begins, once we've seen
+  // one. Fantom block comments nest ("/* outer /* inner */ still outer */"),
+  // so `blockCommentDepth` counts open `/*` markers rather than a plain
+  // in/out flag - a lone `*/` only closes the innermost one.
+  let commentStart = state.blockCommentDepth > 0 ? 0 : -1;
+
   while (i < line.length) {
-    if (state.inBlockComment) {
-      const end = line.indexOf("*/", i);
-      if (end === -1) {
-        return { code: line, comment: "", state };
+    if (state.blockCommentDepth > 0) {
+      if (line.startsWith("/*", i)) {
+        state.blockCommentDepth += 1;
+        i += 2;
+        continue;
       }
-      state.inBlockComment = false;
-      i = end + 2;
+      if (line.startsWith("*/", i)) {
+        state.blockCommentDepth -= 1;
+        i += 2;
+        continue;
+      }
+      i += 1;
       continue;
     }
 
@@ -126,7 +137,10 @@ function splitCodeAndComment(line, state) {
     }
 
     if (line.startsWith("/*", i)) {
-      state.inBlockComment = true;
+      if (commentStart === -1) {
+        commentStart = i;
+      }
+      state.blockCommentDepth = 1;
       i += 2;
       continue;
     }
@@ -169,6 +183,16 @@ function splitCodeAndComment(line, state) {
     }
 
     i += 1;
+  }
+
+  // A block comment that opened on this line (or continued from a previous
+  // one) - whether or not it went on to close before end of line - is
+  // reported as a trailing comment span so the code side never contains a
+  // stray "/*" or "*/" for the token-based code formatter to mangle. Any real
+  // code that happens to follow a same-line closing "*/" rides along
+  // unformatted inside that span rather than being lost.
+  if (commentStart !== -1) {
+    return { code: line.slice(0, commentStart), comment: line.slice(commentStart), state };
   }
 
   return { code: line, comment: "", state };
@@ -704,7 +728,7 @@ function splitCloseBraceContinuations(formatted) {
 function rewriteControlTransitions(formatted) {
   const lines = formatted.replace(/\n$/, "").split("\n");
   const out = [];
-  const state = { inBlockComment: false, inTripleString: false };
+  const state = { blockCommentDepth: 0, inTripleString: false };
 
   for (const line of lines) {
     const split = splitCodeAndComment(line, state);
@@ -753,7 +777,7 @@ export { formatLine, splitCodeAndComment, normalizeParamListText, normalizeCtorC
 export function formatFantomBase(source, options = {}) {
   const text = normalizeNewlines(source);
   const lines = text.split("\n");
-  const state = { inBlockComment: false, inTripleString: false };
+  const state = { blockCommentDepth: 0, inTripleString: false };
   const out = [];
 
   let indentLevel = 0;
@@ -789,7 +813,7 @@ export function formatFantomBase(source, options = {}) {
     blankRun = 0;
 
     const preview = splitCodeAndComment(rawLine, {
-      inBlockComment: state.inBlockComment,
+      blockCommentDepth: state.blockCommentDepth,
       inTripleString: state.inTripleString,
     });
     const deltas = countStructuralDeltas(preview.code);
@@ -1346,7 +1370,7 @@ function normalizeMethodHeaderLine(line) {
 }
 
 function codePortionEnd(line) {
-  const split = splitCodeAndComment(line, { inBlockComment: false, inTripleString: false });
+  const split = splitCodeAndComment(line, { blockCommentDepth: 0, inTripleString: false });
   return split.code.length;
 }
 
@@ -1365,7 +1389,7 @@ function rewriteMethodSignaturesWithAst(formatted, source, ast) {
     }
     const original = lines[idx];
     const indent = (original.match(/^\s*/) ?? [""])[0];
-    const split = splitCodeAndComment(original, { inBlockComment: false, inTripleString: false });
+    const split = splitCodeAndComment(original, { blockCommentDepth: 0, inTripleString: false });
     const codeTrim = split.code.trim();
     if (codeTrim === "") {
       return false;
@@ -1489,7 +1513,7 @@ function rewriteFieldDeclarationsWithAst(formatted, source, ast) {
     }
     const original = lines[idx];
     const indent = (original.match(/^\s*/) ?? [""])[0];
-    const split = splitCodeAndComment(original, { inBlockComment: false, inTripleString: false });
+    const split = splitCodeAndComment(original, { blockCommentDepth: 0, inTripleString: false });
     const codeTrim = split.code.trim();
     if (codeTrim === "") {
       return false;
@@ -1554,7 +1578,7 @@ function rewriteFieldDeclarationsWithAst(formatted, source, ast) {
 function rewriteUnbracedControlBodies(formatted, options = {}) {
   const lines = formatted.replace(/\n$/, "").split("\n");
   const out = [];
-  const state = { inBlockComment: false, inTripleString: false };
+  const state = { blockCommentDepth: 0, inTripleString: false };
 
   // Pattern: a line whose code portion is solely a control keyword (no trailing {).
   const CONTROL_CONTINUATION = /^(finally\s*$|catch\b)/;
@@ -1665,7 +1689,7 @@ function rewriteUnbracedControlBodies(formatted, options = {}) {
 function rewriteControlBraceStyle(formatted) {
   const lines = formatted.replace(/\n$/, "").split("\n");
   const out = [];
-  const state = { inBlockComment: false, inTripleString: false };
+  const state = { blockCommentDepth: 0, inTripleString: false };
 
   for (const line of lines) {
     const split = splitCodeAndComment(line, state);
@@ -1889,7 +1913,7 @@ function rewriteSingleLineControlBodiesWithAst(formatted, ast, options) {
     }
 
     const original = lines[idx];
-    const split = splitCodeAndComment(original, { inBlockComment: false, inTripleString: false });
+    const split = splitCodeAndComment(original, { blockCommentDepth: 0, inTripleString: false });
     const code = split.code;
     const comment = split.comment;
     const keywordRe = new RegExp(`\\b${node.keyword}\\b`);
@@ -1975,7 +1999,7 @@ function rewriteControlHeadersWithAst(formatted, ast) {
     }
 
     const original = lines[idx];
-    const split = splitCodeAndComment(original, { inBlockComment: false, inTripleString: false });
+    const split = splitCodeAndComment(original, { blockCommentDepth: 0, inTripleString: false });
     const code = split.code;
     const comment = split.comment;
     const start = Math.max(0, node.col - 1);

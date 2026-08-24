@@ -466,7 +466,7 @@ function printFieldDef(field, sourceLines) {
   if (initText !== null) {
     // Has `:=` init
     const initLines = initText.split("\n");
-    const fmtState = { inBlockComment: false, inTripleString: false };
+    const fmtState = { blockCommentDepth: 0, inTripleString: false };
     if (initLines.length === 1) {
       const formattedInit = formatLine(initLines[0].trim(), fmtState);
       lines.push(`${header} := ${formattedInit}`);
@@ -978,7 +978,7 @@ function reindentBlock(text, targetIndent) {
   }
   if (indentUnit === 0) indentUnit = 2; // flat or all-continuation block — use 2-space default
 
-  const state = { inBlockComment: false, inTripleString: false };
+  const state = { blockCommentDepth: 0, inTripleString: false };
   const result = [];
   let crossLineParenDepth = 0; // track open parens spanning multiple lines for semicolon guarding
   parenD = 0; // reuse parenD — reset for main pass (structural check)
