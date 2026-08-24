@@ -22,7 +22,7 @@
     "@types/node": "*"
   },
   "scripts": {
-    "test": "node examples/fantom/run-tests.mjs",
+    "test": "node examples/fantom/run-tests.mjs && node examples/trio/run-tests.mjs",
     "trio": "prettier --plugin ./src/index.js --print-width 120 examples/trio/example.trio",
     "fantom": "prettier --plugin ./src/index.js --print-width 120 examples/fantom/example.fan"
   }

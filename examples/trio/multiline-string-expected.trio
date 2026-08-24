@@ -1,0 +1,11 @@
+name: multilineTripleQuoteString
+func
+src:
+  () => do
+    {val:
+    """1. First step
+       2. Second step
+         extra-indented nested detail
+       3. Third step
+       """}.toGrid
+  end
