@@ -108,19 +108,6 @@ export function printAxon(path, options, print) {
             end--;
           }
           const raw = options.originalText.substring(start, end + 1);
-          // Multi-line literals (triple-quoted strings) embed real newlines.
-          // Axon requires every continuation line to be indented to at least
-          // the column where the string's content starts (3 chars past the
-          // opening '"""'), and that column depends on wherever the opening
-          // delimiter itself ends up printed - which this printer can't
-          // otherwise know if arbitrary text (e.g. "key: ") precedes it on
-          // the same line. So we always force the delimiter onto its own
-          // fresh line (flush with whatever indent is active there), and
-          // reproduce each continuation line's *original* offset relative to
-          // that delimiter's original column - preserving both the required
-          // minimum alignment and any deliberate extra indentation the
-          // author put in the string's content - regardless of how the
-          // surrounding expression gets reformatted.
           if (raw.includes("\n")) {
             const lineStart = options.originalText.lastIndexOf("\n", start - 1) + 1;
             const openingOffset = start - lineStart;
