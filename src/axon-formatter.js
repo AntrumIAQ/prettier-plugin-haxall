@@ -107,7 +107,21 @@ export function printAxon(path, options, print) {
             start++;
             end--;
           }
-          return options.originalText.substring(start, end + 1);
+          const raw = options.originalText.substring(start, end + 1);
+          if (raw.includes("\n")) {
+            const lineStart = options.originalText.lastIndexOf("\n", start - 1) + 1;
+            const openingOffset = start - lineStart;
+            const rawLines = raw.split("\n");
+            const pieces = [rawLines[0]];
+            for (let i = 1; i < rawLines.length; i++) {
+              const line = rawLines[i];
+              const lineIndent = line.length - line.trimStart().length;
+              const delta = Math.max(lineIndent - openingOffset, 3);
+              pieces.push(pb.hardline, " ".repeat(delta), line.slice(lineIndent));
+            }
+            return [pb.hardline, ...pieces];
+          }
+          return raw;
         }
         return path.call(print, "val");
 
